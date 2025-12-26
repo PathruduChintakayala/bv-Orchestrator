@@ -11,6 +11,7 @@ Operation = Literal["view", "create", "edit", "delete"]
 # Central list of artifacts used across the app
 ARTIFACTS = [
     "dashboard",
+    "machines",
     "processes",
     "packages",
     "assets",

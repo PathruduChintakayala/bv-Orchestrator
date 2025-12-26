@@ -45,10 +45,14 @@ export default function Register() {
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
-    const { name, value, type, checked } = e.target
+    const target = e.target as HTMLInputElement | HTMLSelectElement
+    const name = target.name
+    const value = target.value
+    const isCheckbox = (target as HTMLInputElement).type === "checkbox"
+    const checked = (target as HTMLInputElement).checked
     setForm((prev) => ({
       ...prev,
-      [name]: type === "checkbox" ? checked : value,
+      [name]: isCheckbox ? checked : value,
     }))
   }
 

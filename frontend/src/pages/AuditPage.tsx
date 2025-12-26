@@ -180,6 +180,7 @@ const td: React.CSSProperties = { padding: '6px 0', borderTop: '1px solid #f3f4f
 const primaryBtn: React.CSSProperties = { padding: '8px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer' }
 const secondaryBtn: React.CSSProperties = { padding: '8px 12px', background: '#e5e7eb', color: '#111827', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer' }
 const inputStyle: React.CSSProperties = { padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, minWidth: 220 }
+const subhead: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', margin: '0 0 6px 0' }
 const modalBackdrop: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }
 const modal: React.CSSProperties = { width: '90%', maxWidth: 900, background: '#fff', borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', padding: 16 }
 

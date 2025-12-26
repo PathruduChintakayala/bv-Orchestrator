@@ -11,6 +11,7 @@ def init_db():
     from .models import (
         User,
         Robot,
+        Machine,
         Process,
         Job,
         Asset,
@@ -22,8 +23,23 @@ def init_db():
         UserRole,
         AuditEvent,
         Setting,
+        SdkAuthSession,
     )  # noqa: F401
     SQLModel.metadata.create_all(engine)
+
+    # Lightweight dev migration for SQLite (create_all does not add columns).
+    try:
+        with engine.connect() as conn:
+            rows = conn.exec_driver_sql("PRAGMA table_info(robots)").fetchall()
+            cols = {r[1] for r in rows}  # name is index 1
+            if "machine_id" not in cols:
+                conn.exec_driver_sql("ALTER TABLE robots ADD COLUMN machine_id INTEGER")
+            if "credential_asset_id" not in cols:
+                conn.exec_driver_sql("ALTER TABLE robots ADD COLUMN credential_asset_id INTEGER")
+            conn.commit()
+    except Exception:
+        # best-effort; dev DB can be reset by deleting backend/app.db
+        pass
 
 def get_session() -> Session:
     return Session(engine)

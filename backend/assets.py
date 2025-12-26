@@ -16,7 +16,26 @@ router = APIRouter(prefix="/assets", tags=["assets"])
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-ALLOWED_TYPES = {"Text", "Int", "Boolean", "Secret", "Credential"}
+CANONICAL_TYPES = {"text", "int", "bool", "secret", "credential"}
+
+
+def normalize_asset_type(raw: str) -> str:
+    v = (raw or "").strip()
+    if not v:
+        return "text"
+    low = v.lower()
+    if low in {"text"}:
+        return "text"
+    if low in {"int", "integer"}:
+        return "int"
+    if low in {"bool", "boolean"}:
+        return "bool"
+    if low in {"secret"}:
+        return "secret"
+    if low in {"credential", "credentials"}:
+        return "credential"
+    # legacy TitleCase values were already handled by lowercasing above
+    raise HTTPException(status_code=400, detail="Invalid asset type")
 
 def hash_secret(raw: str) -> str:
     return pwd_context.hash(raw)
@@ -57,27 +76,25 @@ def create_asset(payload: dict, request: Request, session=Depends(get_session), 
         raise HTTPException(status_code=400, detail="Name is required")
     if session.exec(select(Asset).where(Asset.name == name)).first():
         raise HTTPException(status_code=400, detail="An asset with this name already exists")
-    asset_type = (payload.get("type") or "text").strip()
-    if asset_type not in ALLOWED_TYPES:
-        raise HTTPException(status_code=400, detail="Invalid asset type")
+    asset_type = normalize_asset_type(payload.get("type") or "text")
 
     # Prepare storage according to type
     stored_value = ""
     is_secret = False
 
-    if asset_type in {"Text", "Int", "Boolean"}:
+    if asset_type in {"text", "int", "bool"}:
         value = (payload.get("value") or "").strip()
         if not value:
             raise HTTPException(status_code=400, detail="Value is required")
         stored_value = value
         is_secret = False
-    elif asset_type == "Secret":
+    elif asset_type == "secret":
         value = (payload.get("value") or "").strip()
         if not value:
             raise HTTPException(status_code=400, detail="Value is required for secret")
         stored_value = hash_secret(value)
         is_secret = True
-    elif asset_type == "Credential":
+    elif asset_type == "credential":
         username = (payload.get("username") or "").strip()
         password = (payload.get("password") or "").strip()
         if not username or not password:
@@ -131,22 +148,20 @@ def update_asset(asset_id: int, payload: dict, request: Request, session=Depends
                 raise HTTPException(status_code=400, detail="An asset with this name already exists")
             a.name = new_name
     if "type" in payload and payload["type"]:
-        new_type = str(payload["type"]).strip()
-        if new_type not in ALLOWED_TYPES:
-            raise HTTPException(status_code=400, detail="Invalid asset type")
-        a.type = new_type
+        a.type = normalize_asset_type(str(payload["type"]))
 
     # Update value according to type
-    if a.type in {"Text", "Int", "Boolean"}:
+    cur_type = normalize_asset_type(a.type)
+    if cur_type in {"text", "int", "bool"}:
         if "value" in payload and payload["value"] is not None:
             a.value = str(payload["value"]).strip()
         a.is_secret = False
-    elif a.type == "Secret":
+    elif cur_type == "secret":
         # If new value provided, hash and replace; else keep existing hash
         if "value" in payload and payload["value"]:
             a.value = hash_secret(str(payload["value"]).strip())
         a.is_secret = True
-    elif a.type == "Credential":
+    elif cur_type == "credential":
         # Allow updating username and/or password
         current = {}
         try:
@@ -217,11 +232,12 @@ def delete_asset(asset_id: int, request: Request, session=Depends(get_session), 
 
 def asset_to_out(a: Asset) -> dict:
     # Prepare safe output: mask secrets; expose username for credential; never expose password hash
+    typ = normalize_asset_type(a.type)
     value_out: Optional[str] = a.value
     username_out: Optional[str] = None
-    if a.type == "Secret":
+    if typ == "secret":
         value_out = "***"
-    elif a.type == "Credential":
+    elif typ == "credential":
         try:
             obj = json.loads(a.value or "{}")
             username_out = obj.get("username")
@@ -231,7 +247,7 @@ def asset_to_out(a: Asset) -> dict:
     return {
         "id": a.id,
         "name": a.name,
-        "type": a.type,
+        "type": typ,
         "value": value_out,
         "username": username_out,
         "is_secret": a.is_secret,

@@ -1,6 +1,6 @@
 # BV Orchestrator
 
-A lightweight orchestration platform built with FastAPI (backend) and React + Vite (frontend). It manages Processes, Packages, Robots (Runners), Jobs, Queues, Assets, with Audit Logs, Settings, and Role-Based Access Control (RBAC).
+A lightweight orchestration platform built with FastAPI (backend) and React + Vite (frontend). It manages Processes, Packages, Machines, Robots (Runners), Jobs, Queues, Assets, with Audit Logs, Settings, and Role-Based Access Control (RBAC).
 
 - Backend: FastAPI + SQLModel + SQLite (dev)
 - Frontend: React + TypeScript + Vite
@@ -40,6 +40,9 @@ npm run dev
 ```
 - Opens on http://localhost:5173
 - The frontend proxies `/api/*` to the backend
+
+Tip:
+- The VS Code task “Start Frontend Dev Server” runs `npm run dev` with `frontend/` as the working directory.
 
 ---
 
@@ -85,7 +88,8 @@ npm run preview
 
 ### Routing & Navigation
 - Hash routes (examples):
-  - `#/dashboard`, `#/assets`, `#/processes`, `#/packages`, `#/robots`, `#/jobs`, `#/queues`, `#/audit`, `#/settings`
+  - `#/dashboard`, `#/assets`, `#/processes`, `#/packages`, `#/machines`, `#/robots`, `#/jobs`, `#/queues`, `#/audit`, `#/settings`
+  - `#/sdk-auth?session_id=<uuid>` (developer-only SDK authentication)
 - Header highlights the active tab based on `location.hash`.
 - Simple guarded links for Audit/Settings using a lightweight `hasPermission` helper in the app header (admin passes; otherwise reads a permissions map from localStorage).
 
@@ -140,17 +144,14 @@ npm run preview
 
 ## Authentication & RBAC
 
-- Login via `/api/auth/login` with form fields `username`, `password`.
-- The response includes `access_token`; supply it as `Authorization: Bearer <token>`.
-- Admin user (`admin` / `admin123`) has full access by default.
-- RBAC is enforced for sensitive routes (e.g., `audit:view`, `settings:view|edit`) and being expanded across all domain endpoints.
+- RBAC is enforced server-side via artifacts in `backend/permissions.py` (see `ARTIFACTS`).
 
----
 
 ## Core Concepts
 
 - Processes: Definition of automations (links to a Package and a script path).
 - Packages: Zip bundles of scripts, uploaded and versioned.
+- Machines: Logical compute targets for robots.
 - Robots: Runner agents that execute jobs; authenticate with `X-Robot-Token`.
 - Jobs: Executions of a Process, tracked from pending → running → completed/failed/canceled.
 - Queues & Items: Optional work queues with retries and locking.
@@ -251,20 +252,251 @@ Headers: `X-Robot-Token`
 
 ---
 
+## SDK Development Authentication (Developer-Only)
+
+This is a developer-only authentication flow for local SDK/CLI usage.
+
+Goal:
+- SDK opens the frontend in a browser
+- Developer logs in interactively
+- Backend issues a short-lived SDK JWT
+- SDK polls backend and receives the token
+
+Important guardrails:
+- Not runner auth
+- No refresh tokens
+- Session auto-expires (5 minutes)
+- Session is single-use (once a token is minted, the session is expired)
+- SDK JWT is never stored in the frontend
+
+### Flow
+
+1) SDK starts a session (no auth): `POST /api/sdk/auth/start`
+2) SDK opens the browser to: `http://localhost:5173/#/sdk-auth?session_id=<uuid>`
+3) If the user is not logged in, the page redirects to `#/login` and returns to the original `#/sdk-auth?session_id=...` after login
+4) Frontend confirms the session (user JWT): `POST /api/sdk/auth/confirm`
+5) SDK polls: `GET /api/sdk/auth/status?session_id=<uuid>` until confirmed
+
+Frontend return behavior (important):
+- The frontend uses `sessionStorage` as the *only* return mechanism.
+- Key: `bv_return_to`.
+- When an unauthenticated user lands on `#/sdk-auth?session_id=...`, the app stores `window.location.hash` into `sessionStorage.bv_return_to` (only if not already set, and never stores `#/login`) and then navigates to `#/login`.
+- After successful login, the app consumes `sessionStorage.bv_return_to` exactly once and navigates back to it.
+- No `returnTo` query parameters are used (prevents nested redirects and losing `session_id`).
+
+Auto-close note:
+- After a successful confirmation, the SDK auth page attempts to close the tab as a best-effort.
+- Some browsers block `window.close()` unless the tab was opened by script; in that case the page will remain open and show the success message.
+
+### Endpoints (`/api/sdk/auth`)
+
+- `POST /api/sdk/auth/start`
+  - Request: `{ "machine_name": "DEV-HOST-01" }`
+  - Response: `{ "session_id": "uuid", "expires_at": "ISO8601" }`
+  - Rules: one active (unexpired) session per machine is reused
+
+- `POST /api/sdk/auth/confirm`
+  - Headers: `Authorization: Bearer <user-jwt>`
+  - Request: `{ "session_id": "uuid" }`
+  - Behavior: validates not expired; confirms session (idempotent)
+
+- `GET /api/sdk/auth/status?session_id=uuid`
+  - Pending: `{ "status": "pending" }`
+  - Confirmed: `{ "status": "confirmed", "access_token": "<sdk-jwt>", "expires_at": "ISO8601", "user": { "id": 1, "username": "admin" } }`
+  - Expired/unknown: `{ "status": "expired" }`
+
+### SDK JWT Scope Rules
+
+SDK JWTs include claim: `auth_type: "sdk"` and are restricted server-side to:
+
+Allowed:
+- `GET /api/assets`
+- `GET /api/queues`
+- `POST /api/queue-items`
+
+Denied:
+- Robots
+- Jobs
+- Runner APIs
+- Package upload
+
+Note: The SDK token uses the same JWT format as normal login tokens, but is short-lived and restricted by middleware.
+
 ## Admin & Operator APIs (high level)
 
 These are authenticated with `Authorization: Bearer <token>`.
 
-- Processes: `/api/processes` (CRUD). `script_path` should match a file in the package zip.
-- Packages: `/api/packages/upload` (multipart .zip), list/get/update/delete.
-- Robots: `/api/robots` (CRUD), `/api/robots/{id}/heartbeat` (operator-triggered).
-- Jobs: `/api/jobs` (create/list/get/update/cancel).
-- Queues/Items: `/api/queues`, `/api/queue-items` (create/update/delete).
-- Assets: `/api/assets` (CRUD).
-- Audit: `/api/audit` with filters `from_time`, `to_time`, `action_type`, `user`, `search`, `entity_type`.
-- Settings: `/api/settings` and `/api/settings/{group}`; updates are audited.
 
-Example: Create a job
+### Base URLs
+
+- Backend dev server: `http://127.0.0.1:8000`
+- API prefix: `/api`
+- OpenAPI/Swagger UI: `/docs`
+
+### Authentication summary
+
+- **User/API auth**: `Authorization: Bearer <access_token>`
+  - Obtain token with `POST /api/auth/login`.
+  - Most operator/admin endpoints also enforce RBAC permissions via `require_permission(artifact, operation)`.
+- **Runner/Robot auth**: `X-Robot-Token: <api_token>`
+  - Obtain token with `POST /api/runner/register-robot`.
+  - Used for runner endpoints and package download.
+
+### Endpoints (implemented)
+
+#### Root
+
+- `GET /` — simple root response (`{"message": "Hello FastAPI!"}`)
+
+#### Auth (`/api/auth`)
+
+- `POST /api/auth/login` — login (OAuth2 password form: `username`, `password`) → `{ access_token, token_type }`
+- `POST /api/auth/register` — register a user (JSON payload)
+- `POST /api/auth/forgot` — reset password (JSON: `username`, `email`, `newPassword`)
+- `GET /api/auth/me` — returns current user + roles + permissions map
+
+#### Dashboard (`/api/dashboard`)
+
+- `GET /api/dashboard/overview` — dashboard summary, robot list, recent jobs
+
+#### Assets (`/api/assets`) — RBAC artifact: `assets`
+
+- `GET /api/assets?search=` — list assets
+- `GET /api/assets/{asset_id}` — get asset
+- `POST /api/assets` — create asset
+- `PUT /api/assets/{asset_id}` — update asset
+- `DELETE /api/assets/{asset_id}` — delete asset
+
+Notes:
+- Asset `type` supports (canonical): `text`, `int`, `boolean`, `secret`, `credential`.
+- Secret/Credential values are stored hashed and are masked (`"***"`) on read.
+
+Note:
+- The backend normalizes common legacy casing (e.g., `Text`) to canonical lowercase.
+
+#### Processes (`/api/processes`) — RBAC artifact: `processes`
+
+- `GET /api/processes?search=&active_only=` — list processes
+- `GET /api/processes/{process_id}` — get process
+- `POST /api/processes` — create process
+- `PUT /api/processes/{process_id}` — update process (increments `version` when definition changes)
+- `DELETE /api/processes/{process_id}` — delete process
+
+Notes:
+- `script_path` should point to a `.py` file path within the uploaded package zip.
+
+#### Packages (`/api/packages`) — RBAC artifact: `packages`
+
+- `POST /api/packages/upload` — upload package zip (multipart form)
+  - File must be `.zip`.
+  - Filename convention supported: `name_version.zip` where version is `X.X.X`.
+- `GET /api/packages?search=&active_only=&name=` — list packages
+- `GET /api/packages/{pkg_id}` — get package
+- `PUT /api/packages/{pkg_id}` — update package (name/version/active)
+- `DELETE /api/packages/{pkg_id}` — delete package (best-effort deletes zip from disk)
+
+Runner download:
+
+- `GET /api/packages/{package_id}/download` — download package zip (**requires** `X-Robot-Token`)
+
+#### Machines (`/api/machines`) — RBAC artifact: `machines`
+
+- `GET /api/machines` — list machines
+- `POST /api/machines` — create machine
+- `GET /api/machines/{machine_id}` — get machine
+- `DELETE /api/machines/{machine_id}` — delete machine (blocked if robots exist)
+
+Notes:
+- `POST /api/machines` returns `machine_key` only on creation (one-time display) for `runner` mode.
+- The server stores only a hash of the machine key; it cannot be retrieved later.
+
+#### Robots (operator/admin) (`/api/robots`) — RBAC artifact: `robots`
+
+- `GET /api/robots?search=&status=` — list robots
+- `GET /api/robots/{robot_id}` — get robot
+- `POST /api/robots` — create robot (generates `api_token`)
+- `PUT /api/robots/{robot_id}` — update robot
+- `DELETE /api/robots/{robot_id}` — delete robot
+- `POST /api/robots/{robot_id}/heartbeat` — operator-triggered heartbeat (sets robot online)
+
+Notes:
+- Robots can be linked to a machine via `machine_id`.
+- Robot creation supports optional unattended credentials via `credential: { username, password }`.
+
+#### Jobs (`/api/jobs`) — RBAC artifact: `jobs`
+
+- `GET /api/jobs?status=&process_id=&robot_id=` — list jobs
+- `GET /api/jobs/{job_id}` — get job
+- `POST /api/jobs` — create job (creates `pending` job)
+- `PUT /api/jobs/{job_id}` — update job (status/assignment/result/error)
+- `POST /api/jobs/{job_id}/cancel` — cancel job (pending/running → canceled)
+
+#### Queues (`/api/queues`) — RBAC artifact: `queues`
+
+- `GET /api/queues?search=&active_only=` — list queues
+- `GET /api/queues/{queue_id}` — get queue
+- `POST /api/queues` — create queue
+- `PUT /api/queues/{queue_id}` — update queue
+- `DELETE /api/queues/{queue_id}` — delete queue
+
+#### Queue Items (`/api/queue-items`) — RBAC artifact: `queue_items`
+
+- `GET /api/queue-items?queue_id=&status=` — list queue items
+- `GET /api/queue-items/{item_id}` — get queue item
+- `POST /api/queue-items` — create queue item
+- `PUT /api/queue-items/{item_id}` — update queue item
+- `DELETE /api/queue-items/{item_id}` — delete queue item
+
+#### Access / RBAC Management (`/api/access`)
+
+Roles (RBAC artifact: `roles`):
+
+- `GET /api/access/roles` — list roles (+ permissions)
+- `GET /api/access/roles/{role_id}` — get role
+- `POST /api/access/roles` — create role (with permissions)
+- `PUT /api/access/roles/{role_id}` — update role (optionally replace permissions)
+- `DELETE /api/access/roles/{role_id}` — delete role
+
+Users (RBAC artifact: `users`):
+
+- `GET /api/access/users` — list users
+- `GET /api/access/users/{user_id}/roles` — get roles for user
+- `POST /api/access/users/{user_id}/roles` — assign roles to user (`role_ids`)
+
+#### Audit (`/api/audit`) — RBAC artifact: `audit`
+
+- `GET /api/audit` — list audit events with filters
+  - Time: `from_time`, `to_time` (also supports legacy `from`, `to`)
+  - Actor: `user`, `username`, `user_id`
+  - Action: `action` or `action_type` (`created|modified|deleted|status_changed|login|logout`)
+  - Entity: `entity_type`, `entity_id`
+  - Search: `search` (also supports legacy `q`)
+  - Paging: `page`, `page_size`
+- `GET /api/audit/{event_id}` — get audit event details (before/after/metadata)
+
+#### Settings (`/api/settings`) — RBAC artifact: `settings`
+
+- `GET /api/settings` — get all settings groups
+- `GET /api/settings/{group}` — get a settings group
+- `PUT /api/settings/{group}` — update a settings group (audited)
+
+Allowed groups: `general`, `security`, `jobs`, `email`, `logging`.
+
+#### Runner / Robot-Facing (`/api/runner`)
+
+- `POST /api/runner/register-robot` — register/get robot token by name
+- `POST /api/runner/heartbeat` — runner heartbeat (**requires** `X-Robot-Token`)
+- `POST /api/runner/next-job` — claim next job (**requires** `X-Robot-Token`)
+- `POST /api/runner/jobs/{job_id}/update` — set job `completed|failed` (**requires** `X-Robot-Token`)
+
+#### SDK Development Auth (`/api/sdk/auth`)
+
+- `POST /api/sdk/auth/start` — start/reuse a 5-minute session (no auth)
+- `POST /api/sdk/auth/confirm` — confirm session (requires `Authorization: Bearer <user-jwt>`)
+- `GET /api/sdk/auth/status?session_id=...` — poll status (returns `pending|confirmed|expired`)
+
+### Example: Create a job
+
 ```bash
 curl -X POST http://127.0.0.1:8000/api/jobs \
   -H "Authorization: Bearer $TOKEN" \
@@ -275,7 +507,8 @@ curl -X POST http://127.0.0.1:8000/api/jobs \
       }'
 ```
 
-Example: Upload a package
+### Example: Upload a package
+
 ```bash
 curl -X POST http://127.0.0.1:8000/api/packages/upload \
   -H "Authorization: Bearer $TOKEN" \
@@ -286,13 +519,22 @@ curl -X POST http://127.0.0.1:8000/api/packages/upload \
 
 ## Data Model (key fields)
 
+Machine
+- `id`, `name` (unique)
+- `mode` (`runner|agent`)
+- `status` (`connected|disconnected`)
+- `last_seen_at`
+- `created_at`, `updated_at`
+
 Robot
 - `id`, `name` (unique)
 - `status` (online|offline)
 - `last_heartbeat`
 - `current_job_id`
 - `machine_info`
+- `machine_id` (optional link to Machine)
 - `api_token`
+- `credential_asset_id` (optional link to a Credential Asset)
 - `created_at`, `updated_at`
 
 Job
@@ -342,6 +584,7 @@ Roadmap includes stricter state transition enforcement and idempotent updates.
 ## Development Tips
 
 - Reset DB (dev only): stop the server and delete `backend/app.db`.
+  - If you pulled schema changes (e.g., Machines / Robot `machine_id`), an existing dev DB may need a reset.
 - Backend secret key (`backend/auth.py`) is for dev only; rotate for production.
 - File storage for packages: `backend/packages_store/` (created automatically).
 

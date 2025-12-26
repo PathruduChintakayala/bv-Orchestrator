@@ -2,6 +2,18 @@ import { useEffect, useState } from "react";
 import type { Asset, AssetType } from "../types/assets";
 import { fetchAssets, createAsset, updateAsset, deleteAsset } from "../api/assets";
 
+const ASSET_TYPE_OPTIONS: { value: AssetType; label: string }[] = [
+  { value: 'text', label: 'Text' },
+  { value: 'int', label: 'Int' },
+  { value: 'bool', label: 'Bool' },
+  { value: 'credential', label: 'Credential' },
+  { value: 'secret', label: 'Secret' },
+]
+
+function formatAssetType(t: AssetType): string {
+  return ASSET_TYPE_OPTIONS.find(o => o.value === t)?.label ?? t
+}
+
 export default function AssetsPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,7 +119,7 @@ export default function AssetsPage() {
               {assets.map(a => (
                 <tr key={a.id} style={{ fontSize: 14, color: '#111827' }}>
                   <td style={{ padding: '6px 0' }}>{a.name}</td>
-                  <td style={{ padding: '6px 0' }}>{a.type}</td>
+                  <td style={{ padding: '6px 0' }}>{formatAssetType(a.type as AssetType)}</td>
                   <td style={{ padding: '6px 0' }}>{a.type === 'secret' ? '••••••' : a.type === 'credential' ? (a.username || '') : a.value}</td>
                   <td style={{ padding: '6px 0', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.description || ''}</td>
                   <td style={{ padding: '6px 0' }}>
@@ -147,7 +159,7 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
   const [saving, setSaving] = useState(false);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
-    const { name, value, type } = e.target as any;
+    const { name, value } = e.target as any;
     setForm(prev => {
       const next = { ...prev, [name]: value } as FormValues;
       if (name === 'type') {
@@ -199,7 +211,9 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
           <label>
             <div style={label}>Type</div>
             <select name="type" value={form.type} onChange={handleChange} style={input}>
-              {['text','int','bool','credential','secret'].map(t=> <option key={t} value={t}>{t}</option>)}
+              {ASSET_TYPE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </label>
             {form.type === 'bool' ? (

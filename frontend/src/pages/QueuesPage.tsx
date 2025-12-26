@@ -99,7 +99,7 @@ function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCa
   const [saving, setSaving] = useState(false)
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    const { name, value, type, checked } = e.target as any
+    const { name, value, checked } = e.target as any
     if (name === 'maxRetries') setForm(prev => ({ ...prev, maxRetries: Number(value) }))
     else if (name === 'isActive') setForm(prev => ({ ...prev, isActive: !!checked }))
     else setForm(prev => ({ ...prev, [name]: value }))
@@ -143,7 +143,7 @@ function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCa
   )
 }
 
-type FormValues = { name?: string; description?: string; maxRetries: number; isActive: boolean }
+type FormValues = { name: string; description?: string; maxRetries: number; isActive: boolean }
 
 const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }
 const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBottom: 6 }

@@ -8,6 +8,7 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (loading) return
     setMessage(null)
     setLoading(true)
     const params = new URLSearchParams()
@@ -35,7 +36,15 @@ export default function Login() {
           localStorage.setItem('permissions', JSON.stringify(me.permissions.flat))
         }
       } catch {}
-      window.location.hash = '#/dashboard'
+
+      const returnTo = sessionStorage.getItem('bv_return_to')
+      sessionStorage.removeItem('bv_return_to')
+
+      if (returnTo && !returnTo.startsWith('#/login')) {
+        window.location.hash = returnTo
+      } else {
+        window.location.hash = '#/dashboard'
+      }
     } catch (err: any) {
       setMessage(err.message || 'Error')
     } finally {
