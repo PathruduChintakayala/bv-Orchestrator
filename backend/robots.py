@@ -7,7 +7,7 @@ from sqlmodel import select
 
 from .db import get_session
 from .auth import get_current_user
-from .models import Robot, Job
+from .models import Robot, Job, Machine, Asset
 from .audit_utils import log_event, diff_dicts
 from .permissions import require_permission
 
@@ -21,7 +21,9 @@ def to_out(r: Robot) -> dict:
         "id": r.id,
         "name": r.name,
         "status": r.status,
+        "machine_id": r.machine_id,
         "machine_info": r.machine_info,
+        "credential_asset_id": r.credential_asset_id,
         "last_heartbeat": r.last_heartbeat,
         "current_job_id": r.current_job_id,
         "created_at": r.created_at,
@@ -53,10 +55,47 @@ def create_robot(payload: dict, request: Request, session=Depends(get_session), 
         raise HTTPException(status_code=400, detail="Name is required")
     if session.exec(select(Robot).where(Robot.name == name)).first():
         raise HTTPException(status_code=400, detail="A robot with this name already exists")
+
+    machine_id = payload.get("machine_id")
+    if machine_id is not None:
+        m = session.exec(select(Machine).where(Machine.id == int(machine_id))).first()
+        if not m:
+            raise HTTPException(status_code=400, detail="Selected machine does not exist")
+
+    credential_asset_id = None
+    cred = payload.get("credential")
+    if isinstance(cred, dict):
+        username = (cred.get("username") or "").strip()
+        password = (cred.get("password") or "").strip()
+        if not username or not password:
+            raise HTTPException(status_code=400, detail="credential.username and credential.password are required")
+        # Store credentials as an Asset (masked on read). Password is stored hashed.
+        from .assets import hash_secret
+        import json
+        # unique-ish asset name
+        asset_name = f"robot_{name}_credential"
+        if session.exec(select(Asset).where(Asset.name == asset_name)).first():
+            asset_name = f"{asset_name}_{secrets.token_hex(4)}"
+        a = Asset(
+            name=asset_name,
+            type="credential",
+            value=json.dumps({"username": username, "password_hash": hash_secret(password)}),
+            is_secret=True,
+            description=f"Credential for robot {name}",
+            created_at=now_iso(),
+            updated_at=now_iso(),
+        )
+        session.add(a)
+        session.commit()
+        session.refresh(a)
+        credential_asset_id = a.id
+
     r = Robot(
         name=name,
         status="offline",
+        machine_id=int(machine_id) if machine_id is not None else None,
         machine_info=payload.get("machine_info") or None,
+        credential_asset_id=credential_asset_id,
         api_token=secrets.token_hex(16),
         created_at=now_iso(),
         updated_at=now_iso(),
@@ -81,6 +120,15 @@ def update_robot(robot_id: int, payload: dict, request: Request, session=Depends
         r.status = payload["status"]
     if "machine_info" in payload:
         r.machine_info = payload.get("machine_info") or None
+    if "machine_id" in payload:
+        mid = payload.get("machine_id")
+        if mid is None or mid == "":
+            r.machine_id = None
+        else:
+            m = session.exec(select(Machine).where(Machine.id == int(mid))).first()
+            if not m:
+                raise HTTPException(status_code=400, detail="Selected machine does not exist")
+            r.machine_id = int(mid)
     r.updated_at = now_iso()
     session.add(r)
     session.commit()

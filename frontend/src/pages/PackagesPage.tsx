@@ -33,7 +33,7 @@ export default function PackagesPage() {
 
   async function handleUpload(values: UploadValues) {
     try {
-      const res = await uploadPackage(values.file!, values.name || undefined, values.version || undefined);
+      await uploadPackage(values.file!, values.name || undefined, values.version || undefined);
       closeModal();
       await load(search);
     } catch (e: any) {

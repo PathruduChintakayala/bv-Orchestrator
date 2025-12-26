@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ArtifactKey, Role, RolePermission, UserRoles, UserSummary } from '../types/access'
+import type { ArtifactKey, Role, RolePermission, UserSummary } from '../types/access'
 import { fetchRoles, createRole, updateRole, deleteRole, fetchUsers, assignUserRoles, fetchUserRoles } from '../api/access'
 
 const ARTIFACTS: ArtifactKey[] = ['dashboard','processes','packages','assets','jobs','robots','queues','queue_items','users','roles']
@@ -44,7 +44,7 @@ function RolesTab() {
       if (editing) {
         await updateRole(editing.id, { name: values.name, description: values.description, permissions: values.permissions })
       } else {
-        await createRole({ name: values.name!, description: values.description, permissions: values.permissions })
+        await createRole({ name: values.name, description: values.description, permissions: values.permissions })
       }
       closeModal(); await load()
     } catch (e: any) { alert(e.message || 'Save failed') }
@@ -281,7 +281,7 @@ function UsersTab() {
   )
 }
 
-type RoleFormValues = { name?: string; description?: string; permissions: RolePermission[] }
+type RoleFormValues = { name: string; description?: string; permissions: RolePermission[] }
 
 const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }
 const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBottom: 6 }

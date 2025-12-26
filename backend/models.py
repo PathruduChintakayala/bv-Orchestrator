@@ -1,4 +1,5 @@
 from typing import Optional
+from datetime import datetime
 from sqlmodel import SQLModel, Field
 
 class User(SQLModel, table=True):
@@ -41,10 +42,25 @@ class Robot(SQLModel, table=True):
     status: str = Field(default="offline")  # "online" | "offline"
     last_heartbeat: Optional[str] = None
     current_job_id: Optional[int] = None
+    machine_id: Optional[int] = Field(default=None, index=True)
     machine_info: Optional[str] = None
+    credential_asset_id: Optional[int] = Field(default=None, index=True)
     api_token: Optional[str] = None
     created_at: str
     updated_at: str
+
+
+class Machine(SQLModel, table=True):
+    __tablename__ = "machines"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)
+    mode: str  # "dev" | "runner"
+    status: str  # "connected" | "disconnected"
+    created_at: str
+    updated_at: str
+    last_seen_at: Optional[str] = None
+    # Never returned except at creation time (plain key not stored)
+    machine_key_hash: Optional[str] = None
 
 class Job(SQLModel, table=True):
     __tablename__ = "jobs"
@@ -149,3 +165,14 @@ class Setting(SQLModel, table=True):
     scope: str = Field(default="global")
     updated_by_user_id: int
     updated_at: str = Field(index=True)
+
+
+class SdkAuthSession(SQLModel, table=True):
+    __tablename__ = "sdk_auth_sessions"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True, unique=True)
+    user_id: Optional[int] = Field(default=None, index=True)
+    machine_name: str = Field(index=True)
+    status: str = Field(default="pending", index=True)  # pending | confirmed | expired
+    expires_at: datetime = Field(index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

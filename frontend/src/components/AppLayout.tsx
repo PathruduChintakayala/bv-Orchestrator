@@ -52,6 +52,7 @@ function Header() {
     { label: 'Dashboard', href: '#/dashboard', match: (h: string) => h === '#/' || h.startsWith('#/dashboard') },
     { label: 'Processes', href: '#/processes', match: (h: string) => h.startsWith('#/processes') },
     { label: 'Jobs', href: '#/jobs', match: (h: string) => h.startsWith('#/jobs') },
+    { label: 'Machines', href: '#/machines', match: (h: string) => h.startsWith('#/machines') },
     { label: 'Robots', href: '#/robots', match: (h: string) => h.startsWith('#/robots') },
     { label: 'Packages', href: '#/packages', match: (h: string) => h.startsWith('#/packages') },
     { label: 'Queues', href: '#/queues', match: (h: string) => h.startsWith('#/queues') },

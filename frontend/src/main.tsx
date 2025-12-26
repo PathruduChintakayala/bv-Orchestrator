@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react'
-import { StrictMode } from 'react'
+import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import RegisterSuccess from './pages/RegisterSuccess'
 import LoginSuccess from './pages/LoginSuccess'
+import SdkAuthPage from './pages/SdkAuthPage'
 import DashboardPage from './pages/DashboardPage'
 import AssetsPage from './pages/AssetsPage'
 import LoggedOutPage from './pages/LoggedOutPage'
@@ -13,6 +13,7 @@ import AppLayout from './components/AppLayout'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ProcessesPage from './pages/ProcessesPage'
 import PackagesPage from './pages/PackagesPage'
+import MachinesPage from './pages/MachinesPage'
 import RobotsPage from './pages/RobotsPage'
 import JobsPage from './pages/JobsPage'
 import QueuesPage from './pages/QueuesPage'
@@ -41,13 +42,34 @@ function Router() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
-    // If authenticated and at root, default to dashboard
+  const ensureLoggedIn = () => {
+    if (!localStorage.getItem('token')) {
+      const currentHash = window.location.hash
+
+      if (
+        currentHash &&
+        !currentHash.startsWith('#/login') &&
+        !sessionStorage.getItem('bv_return_to')
+      ) {
+        sessionStorage.setItem('bv_return_to', currentHash)
+      }
+
+      window.location.hash = '#/login'
+      return false
+    }
+
+    return true
+  }
+
+    // Root route: send logged-in users to dashboard, otherwise show login.
     if (route === '#/') {
       const token = localStorage.getItem('token')
       if (token) {
         window.location.hash = '#/dashboard'
         return null
       }
+      window.location.hash = '#/login'
+      return null
     }
 
     // Route order matters: check success before generic register
@@ -57,62 +79,62 @@ function Router() {
     if (route === '#/register') {
       return <Register />
     }
+    if (route.startsWith('#/login')) {
+      return <Login />
+    }
     if (route === '#/login-success') {
       return <LoginSuccess />
     }
+
+    if (route.startsWith('#/sdk-auth')) {
+      return <SdkAuthPage />
+    }
     if (route === '#/dashboard') {
-      const token = localStorage.getItem('token')
-      if (!token) return <Login />
+      if (!ensureLoggedIn()) return null
       return <AppLayout><DashboardPage /></AppLayout>
     }
     if (route === '#/assets') {
-      const token = localStorage.getItem('token')
-      if (!token) return <Login />
+      if (!ensureLoggedIn()) return null
       return <AppLayout><AssetsPage /></AppLayout>
     }
     if (route === '#/processes') {
-      const token = localStorage.getItem('token')
-      if (!token) return <Login />
+      if (!ensureLoggedIn()) return null
       return <AppLayout><ProcessesPage /></AppLayout>
     }
     if (route === '#/packages') {
-      const token = localStorage.getItem('token')
-      if (!token) return <Login />
+      if (!ensureLoggedIn()) return null
       return <AppLayout><PackagesPage /></AppLayout>
     }
+    if (route === '#/machines') {
+      if (!ensureLoggedIn()) return null
+      return <AppLayout><MachinesPage /></AppLayout>
+    }
     if (route === '#/robots') {
-      const token = localStorage.getItem('token')
-      if (!token) return <Login />
+      if (!ensureLoggedIn()) return null
       return <AppLayout><RobotsPage /></AppLayout>
     }
     if (route.startsWith('#/jobs')) {
-      const token = localStorage.getItem('token')
-      if (!token) return <Login />
+      if (!ensureLoggedIn()) return null
       return <AppLayout><JobsPage /></AppLayout>
     }
     if (route === '#/manage-access') {
-      const token = localStorage.getItem('token')
-      if (!token) return <Login />
+      if (!ensureLoggedIn()) return null
       return <AppLayout><ManageAccessPage /></AppLayout>
     }
     if (route === '#/audit') {
-      const token = localStorage.getItem('token')
-      if (!token) return <Login />
+      if (!ensureLoggedIn()) return null
       return <AppLayout><AuditPage /></AppLayout>
     }
     if (route === '#/settings') {
-      const token = localStorage.getItem('token')
-      if (!token) return <Login />
+      if (!ensureLoggedIn()) return null
       return <AppLayout><SettingsPage /></AppLayout>
     }
     if (route === '#/queues') {
-      const token = localStorage.getItem('token')
-      if (!token) return <Login />
+      if (!ensureLoggedIn()) return null
       return <AppLayout><QueuesPage /></AppLayout>
     }
     if (route.startsWith('#/queue-items')) {
-      const token = localStorage.getItem('token')
-      if (!token) return <Login />
+      if (!ensureLoggedIn()) return null
       return <AppLayout><QueueItemsPage /></AppLayout>
     }
     if (route === '#/logged-out') {
@@ -121,23 +143,13 @@ function Router() {
     if (route === '#/forgot') {
       return <ForgotPasswordPage />
     }
-  // TODO: add Forgot page later
-  console.log('[Router] render route:', route)
-  const token = localStorage.getItem('token')
-  // Fallback: if authed, ensure we land on dashboard; if not, ensure hash is login
-  if (token) {
-    if (route !== '#/dashboard') {
-      window.location.hash = '#/dashboard'
-      return null
-    }
-    return <AppLayout><DashboardPage /></AppLayout>
+  // Unknown route fallback
+  if (localStorage.getItem('token')) {
+    window.location.hash = '#/dashboard'
   } else {
-    if (route !== '#/') {
-      window.location.hash = '#/'
-      return null
-    }
-    return <Login />
+    window.location.hash = '#/login'
   }
+  return null
 }
 
 console.log('[App] booting...')

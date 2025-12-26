@@ -4,7 +4,11 @@
 		{
 			"label": "Start Frontend Dev Server",
 			"type": "shell",
-			"command": "cd \"${workspaceFolder}/frontend\"; npm run dev",
+			"command": "npm",
+			"args": ["run", "dev"],
+			"options": {
+				"cwd": "${workspaceFolder}/frontend"
+			},
 			"isBackground": true,
 			"group": "build"
 		}
