@@ -33,7 +33,7 @@ export default function PackagesPage() {
 
   async function handleUpload(values: UploadValues) {
     try {
-      await uploadPackage(values.file!, values.name || undefined, values.version || undefined);
+      await uploadPackage(values.file!);
       closeModal();
       await load(search);
     } catch (e: any) {
@@ -69,7 +69,8 @@ export default function PackagesPage() {
               <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
                 <th style={{ paddingBottom: 8 }}>Name</th>
                 <th style={{ paddingBottom: 8 }}>Version</th>
-                <th style={{ paddingBottom: 8 }}>Scripts</th>
+                <th style={{ paddingBottom: 8 }}>Type</th>
+                <th style={{ paddingBottom: 8 }}>Scripts / Entrypoints</th>
                 <th style={{ paddingBottom: 8 }}>Active</th>
                 <th style={{ paddingBottom: 8 }}>Updated</th>
                 <th style={{ paddingBottom: 8 }}>Actions</th>
@@ -80,7 +81,29 @@ export default function PackagesPage() {
                 <tr key={p.id} style={{ fontSize: 14, color: '#111827' }}>
                   <td style={{ padding: '6px 0' }}>{p.name}</td>
                   <td style={{ padding: '6px 0' }}>{p.version}</td>
-                  <td style={{ padding: '6px 0', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.scripts.join(', ')}</td>
+                  <td style={{ padding: '6px 0' }}>{p.isBvpackage ? 'BV Package' : 'Legacy ZIP'}</td>
+                  <td style={{ padding: '6px 0', maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.isBvpackage ? (
+                      <>
+                        {(p.entrypoints || []).length === 0 ? (
+                          <span style={{ color: '#6b7280' }}>(no entrypoints)</span>
+                        ) : (
+                          (p.entrypoints || []).map((ep, idx) => (
+                            <span key={ep.name}>
+                              {idx > 0 ? ', ' : ''}
+                              {ep.name === p.defaultEntrypoint ? (
+                                <span style={{ fontWeight: 700 }}>{ep.name} (default)</span>
+                              ) : (
+                                <span>{ep.name}</span>
+                              )}
+                            </span>
+                          ))
+                        )}
+                      </>
+                    ) : (
+                      p.scripts.join(', ')
+                    )}
+                  </td>
                   <td style={{ padding: '6px 0' }}>{p.isActive ? 'Yes' : 'No'}</td>
                   <td style={{ padding: '6px 0' }}>{new Date(p.updatedAt).toLocaleString()}</td>
                   <td style={{ padding: '6px 0' }}>
@@ -89,7 +112,7 @@ export default function PackagesPage() {
                 </tr>
               ))}
               {items.length === 0 && (
-                <tr><td colSpan={6} style={{ paddingTop: 12, color: '#6b7280' }}>No packages found</td></tr>
+                <tr><td colSpan={7} style={{ paddingTop: 12, color: '#6b7280' }}>No packages found</td></tr>
               )}
             </tbody>
           </table>
@@ -104,7 +127,7 @@ export default function PackagesPage() {
 }
 
 function UploadModal({ onCancel, onSave }: { onCancel: ()=>void; onSave:(v:UploadValues)=>void }) {
-  const [form, setForm] = useState<UploadValues>({ file: null, name: '', version: '' });
+  const [form, setForm] = useState<UploadValues>({ file: null });
   const [saving, setSaving] = useState(false);
 
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -112,20 +135,9 @@ function UploadModal({ onCancel, onSave }: { onCancel: ()=>void; onSave:(v:Uploa
     setForm(prev => ({ ...prev, file: f }));
   }
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const { name, value } = e.target as any;
-    setForm(prev => ({ ...prev, [name]: value }));
-  }
-
   function validate(): string | null {
-    if (!form.file) return 'Zip file is required';
-    if (!form.file.name.toLowerCase().endsWith('.zip')) return 'File must be a .zip';
-    const ver = (form.version || '').trim();
-    if (ver && !/^\d+\.\d+\.\d+$/.test(ver)) return 'Version must be X.X.X';
-    if (!form.name && !ver) {
-      const base = form.file.name.replace(/\.zip$/i, '');
-      if (!/^[A-Za-z0-9_-]+_\d+\.\d+\.\d+$/.test(base)) return 'Filename must be name_version.zip or provide Name/Version';
-    }
+    if (!form.file) return 'Package file is required';
+    if (!form.file.name.toLowerCase().endsWith('.bvpackage')) return 'File must be a .bvpackage';
     return null;
   }
 
@@ -146,16 +158,8 @@ function UploadModal({ onCancel, onSave }: { onCancel: ()=>void; onSave:(v:Uploa
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>Upload Package</h2>
         <div style={{ display: 'grid', gap: 10 }}>
           <label>
-            <div style={label}>Zip File</div>
-            <input type="file" accept=".zip" onChange={onFile} style={input} />
-          </label>
-          <label>
-            <div style={label}>Name (optional)</div>
-            <input name="name" value={form.name || ''} onChange={handleChange} style={input} placeholder="If blank, derived from filename" />
-          </label>
-          <label>
-            <div style={label}>Version (optional)</div>
-            <input name="version" value={form.version || ''} onChange={handleChange} style={input} placeholder="e.g. 1.2.0; if blank, derived from filename" />
+            <div style={label}>BV Package File (.bvpackage)</div>
+            <input type="file" accept=".bvpackage" onChange={onFile} style={input} />
           </label>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
@@ -169,8 +173,6 @@ function UploadModal({ onCancel, onSave }: { onCancel: ()=>void; onSave:(v:Uploa
 
 type UploadValues = {
   file: File | null;
-  name?: string;
-  version?: string;
 };
 
 const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', width: '100%', maxWidth: '100%', boxSizing: 'border-box' };

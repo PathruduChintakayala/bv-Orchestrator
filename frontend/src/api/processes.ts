@@ -28,41 +28,59 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
+async function readError(res: Response): Promise<string> {
+  const text = await res.text();
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed.detail === "string") return parsed.detail;
+  } catch {
+    // ignore
+  }
+  return text;
+}
+
 export async function fetchProcesses(params?: { search?: string; activeOnly?: boolean }): Promise<Process[]> {
   const qs = new URLSearchParams();
   if (params?.search) qs.set("search", params.search);
   if (params?.activeOnly) qs.set("active_only", "true");
   const res = await fetch(`/api/processes/${qs.toString() ? `?${qs.toString()}` : ""}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readError(res));
   return toCamel(await res.json()) as Process[];
 }
 
 export async function fetchProcess(id: number): Promise<Process> {
   const res = await fetch(`/api/processes/${id}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readError(res));
   return toCamel(await res.json()) as Process;
 }
 
-export async function createProcess(payload: { name: string; description?: string; scriptPath: string; isActive: boolean }): Promise<Process> {
+export async function createProcess(payload: {
+  name: string;
+  description?: string;
+  packageId?: number;
+  scriptPath?: string;
+  entrypointName?: string;
+  isActive: boolean;
+}): Promise<Process> {
   const res = await fetch(`/api/processes/`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(toSnake(payload as any)),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readError(res));
   return toCamel(await res.json()) as Process;
 }
 
 export async function updateProcess(
   id: number,
-  payload: Partial<{ name: string; description?: string; scriptPath: string; isActive: boolean }>
+  payload: Partial<{ name: string; description?: string; packageId?: number; scriptPath?: string; entrypointName?: string; isActive: boolean }>
 ): Promise<Process> {
   const res = await fetch(`/api/processes/${id}`, {
     method: "PUT",
     headers: authHeaders(),
     body: JSON.stringify(toSnake(payload as any)),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readError(res));
   return toCamel(await res.json()) as Process;
 }
 
@@ -71,5 +89,5 @@ export async function deleteProcess(id: number): Promise<void> {
     method: "DELETE",
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readError(res));
 }

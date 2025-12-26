@@ -58,6 +58,9 @@ def job_to_out(j: Job, session=None) -> dict:
         "id": j.id,
         "process_id": j.process_id,
         "package_id": j.package_id,
+        "package_name": getattr(j, "package_name", None),
+        "package_version": getattr(j, "package_version", None),
+        "entrypoint_name": getattr(j, "entrypoint_name", None),
         "robot_id": j.robot_id,
         "status": j.status,
         "parameters": parse_json(j.parameters),
@@ -98,6 +101,19 @@ def create_job(payload: dict, request: Request, session=Depends(get_session), us
     p = session.exec(select(Process).where(Process.id == pid)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Process not found")
+
+    pkg = None
+    if p.package_id is not None:
+        pkg = session.exec(select(Package).where(Package.id == p.package_id)).first()
+        if not pkg:
+            raise HTTPException(status_code=400, detail="Process references a package that does not exist")
+
+    entrypoint_snapshot = None
+    if pkg and bool(getattr(pkg, "is_bvpackage", False)):
+        ep = getattr(p, "entrypoint_name", None)
+        if not ep:
+            raise HTTPException(status_code=400, detail="Process is missing entrypoint_name for BV package execution")
+        entrypoint_snapshot = ep
     rid = payload.get("robot_id")
     if rid is not None:
         r = session.exec(select(Robot).where(Robot.id == rid)).first()
@@ -117,6 +133,9 @@ def create_job(payload: dict, request: Request, session=Depends(get_session), us
     j = Job(
         process_id=pid,
         package_id=p.package_id,
+        package_name=(pkg.name if pkg else None),
+        package_version=(pkg.version if pkg else None),
+        entrypoint_name=entrypoint_snapshot,
         robot_id=rid,
         status="pending",
         parameters=params_json,

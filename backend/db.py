@@ -36,6 +36,32 @@ def init_db():
                 conn.exec_driver_sql("ALTER TABLE robots ADD COLUMN machine_id INTEGER")
             if "credential_asset_id" not in cols:
                 conn.exec_driver_sql("ALTER TABLE robots ADD COLUMN credential_asset_id INTEGER")
+
+            # Packages: bvpackage support
+            rows = conn.exec_driver_sql("PRAGMA table_info(packages)").fetchall()
+            cols = {r[1] for r in rows}
+            if "is_bvpackage" not in cols:
+                conn.exec_driver_sql("ALTER TABLE packages ADD COLUMN is_bvpackage INTEGER DEFAULT 0")
+            if "entrypoints" not in cols:
+                conn.exec_driver_sql("ALTER TABLE packages ADD COLUMN entrypoints TEXT")
+            if "default_entrypoint" not in cols:
+                conn.exec_driver_sql("ALTER TABLE packages ADD COLUMN default_entrypoint TEXT")
+
+            # Processes: bvpackage entrypoint reference
+            rows = conn.exec_driver_sql("PRAGMA table_info(processes)").fetchall()
+            cols = {r[1] for r in rows}
+            if "entrypoint_name" not in cols:
+                conn.exec_driver_sql("ALTER TABLE processes ADD COLUMN entrypoint_name TEXT")
+
+            # Jobs: snapshot fields
+            rows = conn.exec_driver_sql("PRAGMA table_info(jobs)").fetchall()
+            cols = {r[1] for r in rows}
+            if "package_name" not in cols:
+                conn.exec_driver_sql("ALTER TABLE jobs ADD COLUMN package_name TEXT")
+            if "package_version" not in cols:
+                conn.exec_driver_sql("ALTER TABLE jobs ADD COLUMN package_version TEXT")
+            if "entrypoint_name" not in cols:
+                conn.exec_driver_sql("ALTER TABLE jobs ADD COLUMN entrypoint_name TEXT")
             conn.commit()
     except Exception:
         # best-effort; dev DB can be reset by deleting backend/app.db

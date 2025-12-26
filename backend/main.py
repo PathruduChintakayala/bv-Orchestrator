@@ -64,6 +64,8 @@ async def sdk_token_guard(request, call_next):
                     (method == "GET" and (path == "/api/assets" or path.startswith("/api/assets/")))
                     or (method == "GET" and (path == "/api/queues" or path.startswith("/api/queues/")))
                     or (method == "POST" and path == "/api/queue-items")
+                    or (method == "POST" and path == "/api/packages/preflight")
+                    or (method == "POST" and path == "/api/packages/upload")
                 )
                 if not allowed:
                     return JSONResponse(

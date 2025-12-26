@@ -18,7 +18,10 @@ class Process(SQLModel, table=True):
     name: str = Field(index=True, unique=True)
     description: Optional[str] = None
     package_id: Optional[int] = None
+    # Legacy packages use script_path. BV packages use entrypoint_name.
+    # NOTE: Kept as required str for backward compatibility with existing DB schema.
     script_path: str
+    entrypoint_name: Optional[str] = Field(default=None, index=True)
     is_active: bool = True
     version: int = 1
     created_at: str
@@ -31,6 +34,10 @@ class Package(SQLModel, table=True):
     version: str
     file_path: str
     scripts_manifest: Optional[str] = None
+    is_bvpackage: bool = False
+    # JSON string (nullable). Present only when is_bvpackage = True.
+    entrypoints: Optional[str] = None
+    default_entrypoint: Optional[str] = None
     is_active: bool = True
     created_at: str
     updated_at: str
@@ -67,6 +74,10 @@ class Job(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     process_id: int
     package_id: Optional[int] = None
+    # Snapshot fields for reproducible execution.
+    package_name: Optional[str] = None
+    package_version: Optional[str] = None
+    entrypoint_name: Optional[str] = None
     robot_id: Optional[int] = None
     status: str = Field(default="pending")  # "pending" | "running" | "completed" | "failed" | "canceled"
     parameters: Optional[str] = None

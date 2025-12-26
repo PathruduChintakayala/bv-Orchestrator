@@ -7,6 +7,9 @@ export interface Job {
   id: number;
   processId: number;
   packageId?: number | null;
+  packageName?: string | null;
+  packageVersion?: string | null;
+  entrypointName?: string | null;
   robotId?: number | null;
   status: JobStatus;
   parameters?: Record<string, unknown> | null;
