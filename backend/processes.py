@@ -7,6 +7,7 @@ from sqlmodel import select
 from .db import get_session
 from .auth import get_current_user
 from .models import Process, Package
+from .bvpackage import entrypoint_exists
 from .permissions import require_permission
 from .audit_utils import log_event, diff_dicts
 
@@ -29,6 +30,7 @@ def process_to_out(p: Process, session=None) -> dict:
         "name": p.name,
         "description": p.description,
         "package_id": p.package_id,
+        "entrypoint_name": getattr(p, "entrypoint_name", None),
         "script_path": p.script_path,
         "is_active": p.is_active,
         "version": p.version,
@@ -36,6 +38,50 @@ def process_to_out(p: Process, session=None) -> dict:
         "updated_at": p.updated_at,
         "package": pkg_out,
     }
+
+
+def _load_package(session, package_id: Optional[int]) -> Optional[Package]:
+    if package_id is None:
+        return None
+    try:
+        pid = int(package_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="package_id must be an integer")
+    pkg = session.exec(select(Package).where(Package.id == pid)).first()
+    if not pkg:
+        raise HTTPException(status_code=400, detail="Selected package does not exist")
+    return pkg
+
+
+def _validate_process_payload(session, payload: dict) -> dict:
+    """Validate process definition rules for bvpackage vs legacy packages.
+
+    Returns normalized fields: package_id, script_path, entrypoint_name.
+    """
+    package_id = payload.get("package_id")
+    entrypoint_name = (payload.get("entrypoint_name") or "").strip() or None
+    script_path_in = payload.get("script_path")
+    script_path = (script_path_in or "").strip() if script_path_in is not None else None
+
+    pkg = _load_package(session, package_id) if package_id is not None else None
+    if pkg and bool(getattr(pkg, "is_bvpackage", False)):
+        if not entrypoint_name:
+            raise HTTPException(status_code=400, detail="entrypoint_name is required when package is a BV package")
+        if not entrypoint_exists(getattr(pkg, "entrypoints", None), entrypoint_name):
+            raise HTTPException(status_code=400, detail=f"entrypoint_name '{entrypoint_name}' does not exist in the selected BV package")
+        # script_path must be null/ignored for BV packages.
+        normalized_script_path = ""
+        return {"package_id": pkg.id, "entrypoint_name": entrypoint_name, "script_path": normalized_script_path}
+
+    # Legacy behavior
+    if entrypoint_name:
+        raise HTTPException(status_code=400, detail="entrypoint_name must be null for legacy (non-bvpackage) processes")
+    if not script_path:
+        raise HTTPException(status_code=400, detail="Script path is required for legacy (non-bvpackage) processes")
+    if pkg and bool(getattr(pkg, "is_bvpackage", False)):
+        # Safety net: should have been caught above.
+        raise HTTPException(status_code=400, detail="BV package processes must use entrypoint_name")
+    return {"package_id": pkg.id if pkg else None, "entrypoint_name": None, "script_path": script_path}
 
 
 @router.get("/", dependencies=[Depends(get_current_user), Depends(require_permission("processes", "view"))])
@@ -62,18 +108,19 @@ def get_process(process_id: int, session=Depends(get_session)):
 @router.post("/", status_code=201, dependencies=[Depends(get_current_user), Depends(require_permission("processes", "create"))])
 def create_process(payload: dict, request: Request, session=Depends(get_session), user=Depends(get_current_user)):
     name = (payload.get("name") or "").strip()
-    script_path = (payload.get("script_path") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
-    if not script_path:
-        raise HTTPException(status_code=400, detail="Script path is required")
     if session.exec(select(Process).where(Process.name == name)).first():
         raise HTTPException(status_code=400, detail="A process with this name already exists")
+
+    normalized = _validate_process_payload(session, payload)
 
     p = Process(
         name=name,
         description=payload.get("description") or None,
-        script_path=script_path,
+        package_id=normalized["package_id"],
+        entrypoint_name=normalized["entrypoint_name"],
+        script_path=normalized["script_path"],
         is_active=bool(payload.get("is_active", True)),
         version=1,
         created_at=now_iso(),
@@ -119,6 +166,12 @@ def update_process(process_id: int, payload: dict, request: Request, session=Dep
             p.package_id = new_pkg_id
             definition_changed = True
 
+    if "entrypoint_name" in payload:
+        new_ep = (payload.get("entrypoint_name") or "").strip() or None
+        if new_ep != getattr(p, "entrypoint_name", None):
+            p.entrypoint_name = new_ep
+            definition_changed = True
+
     if "script_path" in payload and (payload.get("script_path") or "").strip():
         new_sp = payload["script_path"].strip()
         if new_sp != p.script_path:
@@ -130,6 +183,18 @@ def update_process(process_id: int, payload: dict, request: Request, session=Dep
         if new_active != p.is_active:
             p.is_active = new_active
             definition_changed = True
+
+    # Enforce bvpackage vs legacy combination rules after applying changes.
+    # Use the same validation logic on the would-be state.
+    effective_payload = {
+        "package_id": p.package_id,
+        "entrypoint_name": getattr(p, "entrypoint_name", None),
+        "script_path": p.script_path,
+    }
+    normalized = _validate_process_payload(session, effective_payload)
+    p.package_id = normalized["package_id"]
+    p.entrypoint_name = normalized["entrypoint_name"]
+    p.script_path = normalized["script_path"]
 
     if definition_changed:
         p.version = int(p.version or 1) + 1

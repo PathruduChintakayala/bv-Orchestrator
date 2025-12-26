@@ -39,12 +39,23 @@ export default function ProcessesPage() {
 
   async function handleSave(values: FormValues) {
     try {
-      const payload = {
+      const selectedPkg = values.packageId ? packages.find(p => p.id === values.packageId) : undefined;
+      const isBv = !!selectedPkg?.isBvpackage;
+
+      const payload: any = {
         name: values.name,
-        scriptPath: values.scriptPath,
         description: values.description || undefined,
         isActive: values.isActive,
       };
+      if (values.packageId) payload.packageId = values.packageId;
+
+      if (isBv) {
+        payload.entrypointName = values.entrypointName;
+        // Do not send scriptPath for BV packages.
+      } else {
+        payload.scriptPath = values.scriptPath;
+        payload.entrypointName = null;
+      }
       if (editing) {
         await updateProcess(editing.id, payload);
       } else {
@@ -95,7 +106,9 @@ export default function ProcessesPage() {
               {items.map(p => (
                 <tr key={p.id} style={{ fontSize: 14, color: '#111827' }}>
                   <td style={{ padding: '6px 0' }}>{p.name}</td>
-                  <td style={{ padding: '6px 0', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.scriptPath}</td>
+                  <td style={{ padding: '6px 0', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.package?.isBvpackage ? (p.entrypointName ? `Entrypoint: ${p.entrypointName}` : 'Entrypoint: (missing)') : p.scriptPath}
+                  </td>
                   <td style={{ padding: '6px 0' }}>{p.isActive ? 'Yes' : 'No'}</td>
                   <td style={{ padding: '6px 0' }}>{p.version}</td>
                   <td style={{ padding: '6px 0' }}>{new Date(p.updatedAt).toLocaleString()}</td>
@@ -130,13 +143,33 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
     name: initial?.name || "",
     packageId: initial?.packageId ?? undefined,
     scriptPath: initial?.scriptPath || "",
+    entrypointName: initial?.entrypointName || "",
     description: initial?.description || "",
     isActive: initial?.isActive ?? true,
   });
   const [saving, setSaving] = useState(false);
 
+  const selectedPackage = form.packageId ? packages.find(p => p.id === Number(form.packageId)) : undefined;
+  const isBv = !!selectedPackage?.isBvpackage;
+
+  // When switching to a BV package, preselect its default entrypoint.
+  useEffect(() => {
+    if (!isBv) return;
+    const eps = selectedPackage?.entrypoints || [];
+    const defaultName = selectedPackage?.defaultEntrypoint || eps.find(e => e.default)?.name || eps[0]?.name;
+    setForm(prev => ({
+      ...prev,
+      entrypointName: prev.entrypointName || defaultName || "",
+      // script_path is ignored for BV packages
+    }));
+  }, [isBv, selectedPackage?.id]);
+
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     const { name, value } = e.target as any;
+    if (name === 'packageId') {
+      setForm(prev => ({ ...prev, packageId: value ? Number(value) : undefined }));
+      return;
+    }
     setForm(prev => ({ ...prev, [name]: value }));
   }
 
@@ -144,7 +177,12 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
 
   async function submit() {
     if (!form.name.trim()) { alert('Name is required'); return; }
-    if (!form.scriptPath.trim()) { alert('Script Path is required'); return; }
+    if (isBv) {
+      if (!form.packageId) { alert('Package is required'); return; }
+      if (!form.entrypointName.trim()) { alert('Entrypoint is required'); return; }
+    } else {
+      if (!form.scriptPath.trim()) { alert('Script Path is required'); return; }
+    }
     try {
       setSaving(true);
       await onSave(form);
@@ -181,10 +219,25 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
               ))}
             </select>
           </label>
-          <label>
-            <div style={label}>Script Path</div>
-            <input name="scriptPath" value={form.scriptPath} onChange={handleChange} style={input} />
-          </label>
+          {isBv ? (
+            <label>
+              <div style={label}>Entrypoint</div>
+              <select name="entrypointName" value={form.entrypointName || ''} onChange={handleChange} style={input}>
+                <option value="">Select an entrypoint</option>
+                {(selectedPackage?.entrypoints || []).map(ep => (
+                  <option key={ep.name} value={ep.name}>{ep.name}{ep.name === selectedPackage?.defaultEntrypoint ? ' (default)' : ''}</option>
+                ))}
+              </select>
+              <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+                Entrypoints are defined by the package and cannot be edited here.
+              </div>
+            </label>
+          ) : (
+            <label>
+              <div style={label}>Script Path</div>
+              <input name="scriptPath" value={form.scriptPath} onChange={handleChange} style={input} />
+            </label>
+          )}
           <label>
             <div style={label}>Description</div>
             <textarea name="description" value={form.description || ''} onChange={handleChange} style={{...input, minHeight: 60}} />
@@ -207,6 +260,7 @@ type FormValues = {
   name: string;
   packageId?: number;
   scriptPath: string;
+  entrypointName: string;
   description?: string | null;
   isActive: boolean;
 };

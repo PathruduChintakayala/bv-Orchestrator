@@ -109,7 +109,22 @@ export default function JobsPage() {
                 <tr key={j.id} style={{ fontSize: 14, color: '#111827' }}>
                   <td style={{ padding: '6px 0' }}>{j.id}</td>
                   <td style={{ padding: '6px 0' }}>{j.process?.name ?? j.processId}</td>
-                  <td style={{ padding: '6px 0' }}>{j.process?.package ? `${j.process.package.name} (${j.process.package.version})` : '-'}</td>
+                  <td style={{ padding: '6px 0' }}>
+                    {(() => {
+                      const name = j.packageName ?? j.process?.package?.name;
+                      const version = j.packageVersion ?? j.process?.package?.version;
+                      const header = name && version ? `${name} (${version})` : (name || '-');
+                      const exec = j.entrypointName
+                        ? `Entrypoint: ${j.entrypointName}`
+                        : (j.process?.scriptPath ? `Script: ${j.process.scriptPath}` : null);
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <div>{header}</div>
+                          {exec && <div style={{ fontSize: 12, color: '#6b7280' }}>{exec}</div>}
+                        </div>
+                      );
+                    })()}
+                  </td>
                   <td style={{ padding: '6px 0' }}>{j.robot?.name ?? 'Unassigned'}</td>
                   <td style={{ padding: '6px 0' }}>{j.status}</td>
                   <td style={{ padding: '6px 0' }}>{new Date(j.createdAt).toLocaleString()}</td>

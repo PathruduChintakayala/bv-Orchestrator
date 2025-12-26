@@ -4,6 +4,7 @@ export interface Process {
   description?: string | null;
   packageId?: number | null;
   scriptPath: string;
+  entrypointName?: string | null;
   isActive: boolean;
   version: number;
   createdAt: string;

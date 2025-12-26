@@ -3,6 +3,9 @@ export interface Package {
   name: string;
   version: string; // "1.2.0"
   isActive: boolean;
+  isBvpackage?: boolean;
+  entrypoints?: Array<{ name: string; command: string; default: boolean }> | null;
+  defaultEntrypoint?: string | null;
   scripts: string[];
   createdAt: string;
   updatedAt: string;

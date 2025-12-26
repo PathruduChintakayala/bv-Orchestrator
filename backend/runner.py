@@ -38,13 +38,17 @@ def _job_for_runner(j: Job, session: Session) -> Optional[dict]:
             "id": proc.id,
             "name": proc.name,
             "script_path": proc.script_path,
+            "entrypoint_name": getattr(proc, "entrypoint_name", None),
             "package_id": proc.package_id,
         } if proc else None,
         "package": {
             "id": pkg.id,
-            "name": pkg.name,
-            "version": pkg.version,
+            # Prefer job snapshot values for reproducibility.
+            "name": getattr(j, "package_name", None) or pkg.name,
+            "version": getattr(j, "package_version", None) or pkg.version,
         } if pkg else None,
+        # Convenience snapshot field for runners that understand BV entrypoints.
+        "entrypoint_name": getattr(j, "entrypoint_name", None) or (getattr(proc, "entrypoint_name", None) if proc else None),
     }
 
 

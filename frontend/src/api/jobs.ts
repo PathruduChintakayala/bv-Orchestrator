@@ -17,19 +17,30 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
+async function readError(res: Response): Promise<string> {
+  const text = await res.text();
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed.detail === "string") return parsed.detail;
+  } catch {
+    // ignore
+  }
+  return text;
+}
+
 export async function fetchJobs(params?: { status?: JobStatus; processId?: number; robotId?: number }): Promise<Job[]> {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
   if (params?.processId) qs.set("process_id", String(params.processId));
   if (params?.robotId) qs.set("robot_id", String(params.robotId));
   const res = await fetch(`/api/jobs/${qs.toString() ? `?${qs.toString()}` : ""}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readError(res));
   return toCamel(await res.json()) as Job[];
 }
 
 export async function fetchJob(id: number): Promise<Job> {
   const res = await fetch(`/api/jobs/${id}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readError(res));
   return toCamel(await res.json()) as Job;
 }
 
@@ -41,7 +52,7 @@ export async function createJob(payload: { processId: number; robotId?: number |
     parameters: payload.parameters ?? undefined,
   };
   const res = await fetch(`/api/jobs/`, { method: "POST", headers: authHeaders(), body: JSON.stringify(snake) });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readError(res));
   return toCamel(await res.json()) as Job;
 }
 
@@ -52,12 +63,12 @@ export async function updateJob(id: number, payload: Partial<{ status: JobStatus
   if (payload.result !== undefined) snake.result = payload.result;
   if (payload.errorMessage !== undefined) snake.error_message = payload.errorMessage;
   const res = await fetch(`/api/jobs/${id}`, { method: "PUT", headers: authHeaders(), body: JSON.stringify(snake) });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readError(res));
   return toCamel(await res.json()) as Job;
 }
 
 export async function cancelJob(id: number): Promise<Job> {
   const res = await fetch(`/api/jobs/${id}/cancel`, { method: "POST", headers: authHeaders() });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readError(res));
   return toCamel(await res.json()) as Job;
 }
