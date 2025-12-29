@@ -9,6 +9,7 @@ export default function QueuesPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState<number[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Queue | null>(null)
   const [selectedQueue, setSelectedQueue] = useState<Queue | null>(null)
@@ -29,6 +30,7 @@ export default function QueuesPage() {
       ])
       setItems(queuesData)
       setQueueItems(itemsData)
+      setSelected([]) // clear selection on reload
     } catch (e: any) {
       setError(e.message || 'Failed to load queues')
     } finally { setLoading(false) }
@@ -41,9 +43,9 @@ export default function QueuesPage() {
   async function handleSave(values: FormValues) {
     try {
       if (editing) {
-        await updateQueue(editing.id, { description: values.description || undefined, maxRetries: values.maxRetries, isActive: values.isActive })
+        await updateQueue(editing.id, { description: values.description || undefined, maxRetries: values.maxRetries })
       } else {
-        await createQueue({ name: values.name!, description: values.description || undefined, maxRetries: values.maxRetries, isActive: values.isActive })
+        await createQueue({ name: values.name!, description: values.description || undefined, maxRetries: values.maxRetries })
       }
       closeModal(); await load()
     } catch (e: any) { alert(e.message || 'Save failed') }
@@ -78,6 +80,40 @@ export default function QueuesPage() {
     if (seconds < 60) return `${Math.round(seconds)} s`
     const minutes = seconds / 60
     return `${minutes.toFixed(1)} min`
+  }
+
+  function toggleSelect(id: number) {
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function toggleSelectAll() {
+    if (selected.length === items.length) {
+      setSelected([])
+    } else {
+      setSelected(items.map(q => q.id))
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selected.length === 0) return
+    if (!confirm(`Delete ${selected.length} selected queue(s)? This action cannot be undone.`)) return
+    let successCount = 0
+    let errorMessages: string[] = []
+    for (const id of selected) {
+      try {
+        await deleteQueue(id)
+        successCount++
+      } catch (e: any) {
+        errorMessages.push(`Failed to delete queue ${id}: ${e.message || 'Unknown error'}`)
+      }
+    }
+    if (errorMessages.length > 0) {
+      alert(`Deleted ${successCount} queue(s).\n\nErrors:\n${errorMessages.join('\n')}`)
+    } else {
+      alert(`Successfully deleted ${successCount} queue(s).`)
+    }
+    setSelected([])
+    await load()
   }
 
   return (
@@ -115,10 +151,21 @@ export default function QueuesPage() {
       </div>
 
       <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
+        {selected.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
+            <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
+            <button onClick={handleBulkDelete} style={dangerBtn}>Delete</button>
+          </div>
+        )}
         {loading ? <p>Loading...</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
+                <th style={{ paddingBottom: 8, width: 40 }}>
+                  <input type="checkbox" checked={selected.length === items.length && items.length > 0} onChange={toggleSelectAll} ref={(el) => {
+                    if (el) el.indeterminate = selected.length > 0 && selected.length < items.length
+                  }} />
+                </th>
                 <th style={{ paddingBottom: 8 }}>Name</th>
                 <th style={{ paddingBottom: 8, textAlign: 'right' }}>In Progress</th>
                 <th style={{ paddingBottom: 8, textAlign: 'right' }}>Remaining</th>
@@ -126,8 +173,6 @@ export default function QueuesPage() {
                 <th style={{ paddingBottom: 8, textAlign: 'right' }}>Successful</th>
                 <th style={{ paddingBottom: 8, textAlign: 'right' }}>App Exceptions</th>
                 <th style={{ paddingBottom: 8, textAlign: 'right' }}>Biz Exceptions</th>
-                <th style={{ paddingBottom: 8 }}>Process</th>
-                <th style={{ paddingBottom: 8 }}>Labels</th>
                 <th style={{ paddingBottom: 8 }}>Properties</th>
                 <th style={{ paddingBottom: 8 }}>Actions</th>
               </tr>
@@ -138,19 +183,20 @@ export default function QueuesPage() {
                 return (
                   <tr key={q.id} style={{ fontSize: 14, color: '#111827' }}>
                     <td style={{ padding: '6px 0' }}>
+                      <input type="checkbox" checked={selected.includes(q.id)} onChange={() => toggleSelect(q.id)} />
+                    </td>
+                    <td style={{ padding: '6px 0' }}>
                       <a href={`#/queue-items?queueId=${q.id}`} style={{ color: '#2563eb', textDecoration: 'none' }}>{q.name}</a>
                     </td>
-                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.inProgress}</td>
-                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.remaining}</td>
-                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{formatTime(metrics.avgProcessingTime)}</td>
-                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.successful}</td>
-                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.appExceptions}</td>
-                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.bizExceptions}</td>
-                    <td style={{ padding: '6px 0' }}>-</td>
-                    <td style={{ padding: '6px 0' }} title={''}>-</td>
+                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.inProgress ?? 0}</td>
+                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.remaining ?? 0}</td>
+                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{formatTime(metrics.avgProcessingTime ?? 0)}</td>
+                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.successful ?? 0}</td>
+                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.appExceptions ?? 0}</td>
+                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.bizExceptions ?? 0}</td>
                     <td style={{ padding: '6px 0' }} title={q.description || ''}>{(q.description || '').slice(0, 20)}{(q.description || '').length > 20 ? '...' : ''}</td>
                     <td style={{ padding: '6px 0' }}>
-                      <select style={{ border: 'none', background: 'none', cursor: 'pointer' }} onChange={e => {
+                      <select style={{ border: '1px solid #e5e7eb', backgroundColor: '#f3f4f6', cursor: 'pointer', padding: '4px 8px', borderRadius: 4, fontSize: 12, color: '#111827' }} onChange={e => {
                         const action = e.target.value
                         if (action === 'view-items') window.location.hash = `#/queue-items?queueId=${q.id}`
                         else if (action === 'view-details') setSelectedQueue(q)
@@ -158,7 +204,7 @@ export default function QueuesPage() {
                         else if (action === 'delete') handleDelete(q.id)
                         e.target.value = ''
                       }}>
-                        <option value=''>⋮</option>
+                        <option value=''>Actions</option>
                         <option value='view-items'>View Queue Items</option>
                         <option value='view-details'>View Details</option>
                         <option value='edit'>Edit Queue</option>
@@ -204,7 +250,6 @@ function DetailsModal({ queue, onClose }: { queue: Queue; onClose: () => void })
         <div style={{ display: 'grid', gap: 12 }}>
           <div><strong>Name:</strong> {queue.name}</div>
           <div><strong>Description:</strong> {queue.description || 'No description'}</div>
-          <div><strong>Active:</strong> {queue.isActive ? 'Yes' : 'No'}</div>
           <div><strong>Max Retries:</strong> {queue.maxRetries}</div>
           <div><strong>Created At:</strong> {new Date(queue.createdAt).toLocaleString()}</div>
           <div><strong>Updated At:</strong> {new Date(queue.updatedAt).toLocaleString()}</div>
@@ -215,13 +260,12 @@ function DetailsModal({ queue, onClose }: { queue: Queue; onClose: () => void })
 }
 
 function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCancel: ()=>void; onSave:(v:FormValues)=>void }) {
-  const [form, setForm] = useState<FormValues>({ name: initial?.name || '', description: initial?.description || '', maxRetries: initial?.maxRetries ?? 0, isActive: initial?.isActive ?? true })
+  const [form, setForm] = useState<FormValues>({ name: initial?.name || '', description: initial?.description || '', maxRetries: initial?.maxRetries ?? 0 })
   const [saving, setSaving] = useState(false)
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    const { name, value, checked } = e.target as any
+    const { name, value } = e.target as any
     if (name === 'maxRetries') setForm(prev => ({ ...prev, maxRetries: Number(value) }))
-    else if (name === 'isActive') setForm(prev => ({ ...prev, isActive: !!checked }))
     else setForm(prev => ({ ...prev, [name]: value }))
   }
 
@@ -249,10 +293,6 @@ function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCa
             <div style={label}>Max retries</div>
             <input name='maxRetries' type='number' value={form.maxRetries} onChange={handleChange} style={input} />
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input name='isActive' type='checkbox' checked={form.isActive} onChange={handleChange} />
-            <span>Active</span>
-          </label>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
@@ -263,7 +303,7 @@ function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCa
   )
 }
 
-type FormValues = { name: string; description?: string; maxRetries: number; isActive: boolean }
+type FormValues = { name: string; description?: string; maxRetries: number }
 
 const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }
 const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBottom: 6 }

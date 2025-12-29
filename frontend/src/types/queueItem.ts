@@ -1,9 +1,9 @@
 import type { Queue } from './queue'
 
-export type QueueItemStatus = 'new' | 'in_progress' | 'completed' | 'failed' | 'abandoned'
+export type QueueItemStatus = 'new' | 'in_progress' | 'completed' | 'failed' | 'deleted'
 
 export interface QueueItem {
-  id: number
+  id: string
   queueId: number
   reference?: string | null
   status: QueueItemStatus

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, select
 from .db import get_session
@@ -8,8 +8,22 @@ from datetime import datetime
 import json
 from .audit_utils import log_event
 from .permissions import require_permission
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/queue-items", tags=["queue-items"])
+
+
+class CreateQueueItemRequest(BaseModel):
+    queue_id: int
+    reference: Optional[str] = None
+    priority: int = 0
+    payload: Optional[Any] = None
+
+
+class UpdateQueueItemRequest(BaseModel):
+    status: Optional[str] = None
+    result: Optional[Any] = None
+    error_message: Optional[str] = None
 
 
 def utcnow_iso() -> str:
@@ -33,7 +47,7 @@ def list_items(
 
 
 @router.get("/{item_id}", response_model=QueueItem, dependencies=[Depends(require_permission("queue_items", "view"))])
-def get_item(item_id: int, session: Session = Depends(get_session), user=Depends(get_current_user)):
+def get_item(item_id: str, session: Session = Depends(get_session), user=Depends(get_current_user)):
     obj = session.get(QueueItem, item_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Queue item not found")
@@ -41,19 +55,26 @@ def get_item(item_id: int, session: Session = Depends(get_session), user=Depends
 
 
 @router.post("/", response_model=QueueItem, status_code=201, dependencies=[Depends(require_permission("queue_items", "create"))])
-def create_item(payload: QueueItem, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
+def create_item(payload: CreateQueueItemRequest, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
     # require queue exists
     queue = session.get(Queue, payload.queue_id)
     if not queue:
         raise HTTPException(status_code=400, detail="Queue does not exist")
+    
+    # enforce unique reference if provided
+    if payload.reference:
+        existing = session.exec(select(QueueItem).where(QueueItem.reference == payload.reference)).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Queue item reference already exists")
+    
     now = utcnow_iso()
     obj = QueueItem(
         queue_id=payload.queue_id,
         reference=payload.reference,
         status="NEW",
-        priority=payload.priority or 0,
+        priority=payload.priority,
         payload=json.dumps(payload.payload) if isinstance(payload.payload, (dict, list)) else payload.payload,
-        result=json.dumps(payload.result) if isinstance(payload.result, (dict, list)) else None,
+        result=None,
         error_message=None,
         retries=0,
         locked_by_robot_id=None,
@@ -73,7 +94,7 @@ def create_item(payload: QueueItem, request: Request, session: Session = Depends
 
 
 @router.put("/{item_id}", response_model=QueueItem, dependencies=[Depends(require_permission("queue_items", "edit"))])
-def update_item(item_id: int, payload: QueueItem, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
+def update_item(item_id: str, payload: UpdateQueueItemRequest, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
     obj = session.get(QueueItem, item_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Queue item not found")
@@ -99,15 +120,19 @@ def update_item(item_id: int, payload: QueueItem, request: Request, session: Ses
 
 
 @router.delete("/{item_id}", status_code=204, dependencies=[Depends(require_permission("queue_items", "delete"))])
-def delete_item(item_id: int, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
+def delete_item(item_id: str, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
     obj = session.get(QueueItem, item_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Queue item not found")
-    before_ref = str(obj.reference or obj.id)
-    session.delete(obj)
+    if obj.status == "DELETED":
+        raise HTTPException(status_code=400, detail="Item is already deleted")
+    before_status = obj.status
+    obj.status = "DELETED"
+    obj.updated_at = utcnow_iso()
+    session.add(obj)
     session.commit()
     try:
-        log_event(session, action="queue_item.delete", entity_type="queue_item", entity_id=item_id, entity_name=before_ref, before=None, after=None, metadata=None, request=request, user=user)
+        log_event(session, action="queue_item.delete", entity_type="queue_item", entity_id=obj.id, entity_name=str(obj.reference or obj.id), before={"status": before_status}, after={"status": "DELETED"}, metadata={"status_from": before_status, "status_to": "DELETED"}, request=request, user=user)
     except Exception:
         pass
     return None

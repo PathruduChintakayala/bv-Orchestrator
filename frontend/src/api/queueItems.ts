@@ -42,7 +42,7 @@ export async function fetchQueueItems(params?: { queueId?: number; status?: Queu
   return data.map(toClient)
 }
 
-export async function fetchQueueItem(id: number): Promise<QueueItem> {
+export async function fetchQueueItem(id: string): Promise<QueueItem> {
   const res = await fetch(`/api/queue-items/${id}`, { headers: authHeaders() })
   if (!res.ok) throw new Error(await res.text())
   return toClient(await res.json())
@@ -60,7 +60,7 @@ export async function createQueueItem(payload: { queueId: number; reference?: st
   return toClient(await res.json())
 }
 
-export async function updateQueueItem(id: number, payload: Partial<{ status: QueueItemStatus; result: Record<string, unknown> | null; errorMessage: string | null }>): Promise<QueueItem> {
+export async function updateQueueItem(id: string, payload: Partial<{ status: QueueItemStatus; result: Record<string, unknown> | null; errorMessage: string | null }>): Promise<QueueItem> {
   const body: any = {}
   if (payload.status !== undefined) body.status = payload.status
   if (payload.result !== undefined) body.result = payload.result
