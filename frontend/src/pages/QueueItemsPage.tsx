@@ -21,21 +21,37 @@ export default function QueueItemsPage() {
     const newQueueId = qid ? Number(qid) : null
     setQueueId(newQueueId)
     
-    if (newQueueId) {
-      // Fetch the specific queue info
-      fetchQueues({}).then(queues => {
-        const queue = queues.find(q => q.id === newQueueId)
-        setCurrentQueue(queue || null)
-      }).catch(() => {})
+    if (!newQueueId) {
+      setError('Queue ID is required. Please navigate from the Queues page.')
+      setLoading(false)
+      return
     }
+
+    // Fetch the specific queue info
+    fetchQueues({}).then(queues => {
+      const queue = queues.find(q => q.id === newQueueId)
+      setCurrentQueue(queue || null)
+      if (!queue) {
+        setError('Queue not found.')
+        setLoading(false)
+      }
+    }).catch(() => {
+      setError('Failed to load queue information.')
+      setLoading(false)
+    })
   }, [])
 
-  useEffect(() => { load() }, [queueId, status])
+  useEffect(() => { 
+    if (queueId) {
+      load() 
+    }
+  }, [queueId, status])
 
   async function load() {
+    if (!queueId) return
     try {
       setLoading(true); setError(null)
-      const data = await fetchQueueItems({ queueId: queueId ?? undefined, status: status || undefined as any })
+      const data = await fetchQueueItems({ queueId, status: status || undefined as any })
       setItems(data)
       setSelected([]) // clear selection on reload
     } catch (e: any) {
@@ -50,7 +66,10 @@ export default function QueueItemsPage() {
     try {
       await createQueueItem({ queueId: queueId!, reference: values.reference || undefined, priority: values.priority ?? 0, payload: values.payload || undefined })
       closeModal(); await load()
-    } catch (e: any) { alert(e.message || 'Create failed') }
+    } catch (e: any) {
+      // Error is handled in the modal
+      throw e
+    }
   }
 
   async function softDelete(id: string) {
@@ -204,13 +223,15 @@ function StatusBadge({ status }: { status: QueueItemStatus }) {
   )
 }
 
-function NewItemModal({ queueId, onCancel, onSave }: { queueId: number; onCancel: ()=>void; onSave:(v:FormValues)=>void }) {
+function NewItemModal({ queueId, onCancel, onSave }: { queueId: number; onCancel: ()=>void; onSave:(v:FormValues)=>Promise<void> }) {
   const [form, setForm] = useState<FormValues>({ reference: '', priority: 0, payloadText: '' })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     const { name, value } = e.target as any
     setForm(prev => ({ ...prev, [name]: name === 'priority' ? (value ? Number(value) : undefined) : value }))
+    if (name === 'reference') setError(null) // Clear error when reference changes
   }
 
   function parsePayload(): Record<string, unknown> | undefined {
@@ -222,7 +243,8 @@ function NewItemModal({ queueId, onCancel, onSave }: { queueId: number; onCancel
   async function submit() {
     const payload = parsePayload()
     if (form.payloadText && !payload) return
-    try { setSaving(true); await onSave({ queueId, reference: form.reference, priority: form.priority, payload }); } finally { setSaving(false) }
+    setError(null)
+    try { setSaving(true); await onSave({ queueId, reference: form.reference, priority: form.priority, payload }); } catch (e: any) { setError(e.message || 'Create failed') } finally { setSaving(false) }
   }
 
   return (
@@ -233,6 +255,7 @@ function NewItemModal({ queueId, onCancel, onSave }: { queueId: number; onCancel
           <label>
             <div style={label}>Reference</div>
             <input name='reference' value={form.reference || ''} onChange={handleChange} style={input} />
+            {error && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 4 }}>{error}</div>}
           </label>
           <label>
             <div style={label}>Priority</div>

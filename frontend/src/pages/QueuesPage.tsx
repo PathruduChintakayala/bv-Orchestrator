@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { Queue } from '../types/queue'
-import { fetchQueues, createQueue, updateQueue, deleteQueue } from '../api/queues'
-import { fetchQueueItems } from '../api/queueItems'
+import { fetchQueues, fetchQueueStats } from '../api/queues'
 
 export default function QueuesPage() {
   const [items, setItems] = useState<Queue[]>([])
-  const [queueItems, setQueueItems] = useState<import('../types/queueItem').QueueItem[]>([])
+  const [queueStats, setQueueStats] = useState<Record<number, any>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -24,12 +23,16 @@ export default function QueuesPage() {
   async function load() {
     try {
       setLoading(true); setError(null)
-      const [queuesData, itemsData] = await Promise.all([
-        fetchQueues(search ? { search } : undefined),
-        fetchQueueItems()
-      ])
+      const queuesData = await fetchQueues(search ? { search } : undefined)
       setItems(queuesData)
-      setQueueItems(itemsData)
+      // Fetch stats for all queues
+      const statsPromises = queuesData.map(q => fetchQueueStats(q.id).then(stats => ({ id: q.id, stats })).catch(() => ({ id: q.id, stats: null })))
+      const statsResults = await Promise.all(statsPromises)
+      const statsMap: Record<number, any> = {}
+      statsResults.forEach(({ id, stats }) => {
+        statsMap[id] = stats
+      })
+      setQueueStats(statsMap)
       setSelected([]) // clear selection on reload
     } catch (e: any) {
       setError(e.message || 'Failed to load queues')
@@ -45,7 +48,7 @@ export default function QueuesPage() {
       if (editing) {
         await updateQueue(editing.id, { description: values.description || undefined, maxRetries: values.maxRetries })
       } else {
-        await createQueue({ name: values.name!, description: values.description || undefined, maxRetries: values.maxRetries })
+        await createQueue({ name: values.name!, description: values.description || undefined, maxRetries: values.maxRetries, enforceUniqueReference: values.enforceUniqueReference })
       }
       closeModal(); await load()
     } catch (e: any) { alert(e.message || 'Save failed') }
@@ -57,23 +60,16 @@ export default function QueuesPage() {
   }
 
   function getQueueMetrics(queueId: number) {
-    const items = queueItems.filter(i => i.queueId === queueId)
-    const inProgress = items.filter(i => i.status === 'in_progress').length
-    const remaining = items.filter(i => i.status === 'new' || i.status === 'in_progress').length
-    const successful = items.filter(i => i.status === 'completed').length
-    const appExceptions = items.filter(i => i.status === 'failed').length
-    const bizExceptions = 0 // not distinguished
-    const completedItemsList = items.filter(i => i.status === 'completed')
-    let avgProcessingTime = 0
-    if (completedItemsList.length > 0) {
-      const totalTime = completedItemsList.reduce((sum, i) => {
-        const start = new Date(i.createdAt).getTime()
-        const end = new Date(i.updatedAt || i.createdAt).getTime()
-        return sum + (end - start)
-      }, 0)
-      avgProcessingTime = totalTime / completedItemsList.length / 1000 // seconds
+    const stats = queueStats[queueId]
+    if (!stats) return { inProgress: 0, remaining: 0, avgProcessingTime: 0, successful: 0, appExceptions: 0, bizExceptions: 0 }
+    return {
+      inProgress: stats.inProgress ?? 0,
+      remaining: stats.remaining ?? 0,
+      avgProcessingTime: stats.avgProcessingTime ?? 0,
+      successful: stats.successful ?? 0,
+      appExceptions: stats.appExceptions ?? 0,
+      bizExceptions: stats.bizExceptions ?? 0
     }
-    return { inProgress, remaining, avgProcessingTime, successful, appExceptions, bizExceptions }
   }
 
   function formatTime(seconds: number): string {
@@ -251,6 +247,7 @@ function DetailsModal({ queue, onClose }: { queue: Queue; onClose: () => void })
           <div><strong>Name:</strong> {queue.name}</div>
           <div><strong>Description:</strong> {queue.description || 'No description'}</div>
           <div><strong>Max Retries:</strong> {queue.maxRetries}</div>
+          <div><strong>Enforce Unique Reference:</strong> {queue.enforceUniqueReference ? 'Yes' : 'No'}</div>
           <div><strong>Created At:</strong> {new Date(queue.createdAt).toLocaleString()}</div>
           <div><strong>Updated At:</strong> {new Date(queue.updatedAt).toLocaleString()}</div>
         </div>
@@ -260,17 +257,18 @@ function DetailsModal({ queue, onClose }: { queue: Queue; onClose: () => void })
 }
 
 function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCancel: ()=>void; onSave:(v:FormValues)=>void }) {
-  const [form, setForm] = useState<FormValues>({ name: initial?.name || '', description: initial?.description || '', maxRetries: initial?.maxRetries ?? 0 })
+  const [form, setForm] = useState<FormValues>({ name: initial?.name || '', description: initial?.description || '', maxRetries: initial?.maxRetries ?? 0, enforceUniqueReference: initial?.enforceUniqueReference ?? false })
   const [saving, setSaving] = useState(false)
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    const { name, value } = e.target as any
-    if (name === 'maxRetries') setForm(prev => ({ ...prev, maxRetries: Number(value) }))
+    const { name, value, type, checked } = e.target as any
+    if (type === 'checkbox') setForm(prev => ({ ...prev, [name]: checked }))
+    else if (name === 'maxRetries') setForm(prev => ({ ...prev, maxRetries: Number(value) }))
     else setForm(prev => ({ ...prev, [name]: value }))
   }
 
   async function submit() {
-    if (!initial && !form.name.trim()) { alert('Name is required'); return }
+    if (!initial && !form.name?.trim()) { alert('Name is required'); return }
     try { setSaving(true); await onSave(form) } finally { setSaving(false) }
   }
 
@@ -293,6 +291,15 @@ function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCa
             <div style={label}>Max retries</div>
             <input name='maxRetries' type='number' value={form.maxRetries} onChange={handleChange} style={input} />
           </label>
+          {!initial && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input name='enforceUniqueReference' type='checkbox' checked={form.enforceUniqueReference} onChange={handleChange} />
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Enforce unique reference for queue items</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>If enabled, queue items must have unique references within this queue. Deleted items still count.</div>
+              </div>
+            </label>
+          )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
@@ -303,7 +310,7 @@ function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCa
   )
 }
 
-type FormValues = { name: string; description?: string; maxRetries: number }
+type FormValues = { name?: string; description?: string; maxRetries: number; enforceUniqueReference?: boolean }
 
 const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }
 const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBottom: 6 }
