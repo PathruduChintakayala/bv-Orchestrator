@@ -134,7 +134,6 @@ class Queue(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True)
     description: Optional[str] = None
-    is_active: bool = True
     max_retries: int = 0
     created_at: str
     updated_at: str
@@ -142,10 +141,10 @@ class Queue(SQLModel, table=True):
 
 class QueueItem(SQLModel, table=True):
     __tablename__ = "queue_items"
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True)
     queue_id: int = Field(index=True)
-    reference: Optional[str] = Field(default=None, index=True)
-    status: str = Field(default="NEW")  # NEW | IN_PROGRESS | DONE | FAILED
+    reference: Optional[str] = Field(default=None, index=True, unique=True)
+    status: str = Field(default="NEW")  # NEW | IN_PROGRESS | DONE | FAILED | DELETED
     priority: int = 0
     payload: Optional[str] = None
     result: Optional[str] = None

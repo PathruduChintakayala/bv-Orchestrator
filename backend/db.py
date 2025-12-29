@@ -127,25 +127,59 @@ def init_db():
 
             rows = conn.exec_driver_sql("PRAGMA table_info(queue_items)").fetchall()
             cols = {r[1] for r in rows}
-            if "reference" not in cols:
-                conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN reference TEXT")
-            if "priority" not in cols:
-                conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN priority INTEGER DEFAULT 0")
-            if "payload" not in cols:
-                conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN payload TEXT")
-            if "result" not in cols:
-                conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN result TEXT")
-            if "error_message" not in cols:
-                conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN error_message TEXT")
-            if "retries" not in cols:
-                conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN retries INTEGER DEFAULT 0")
-            if "locked_by_robot_id" not in cols:
-                conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN locked_by_robot_id INTEGER")
-            if "locked_at" not in cols:
-                conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN locked_at TEXT")
-            if "job_id" not in cols:
-                conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN job_id INTEGER")
-            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_queue_items_queue_id_status ON queue_items(queue_id, status)")
+            # Check if id column is still INTEGER (old schema) and needs migration to TEXT
+            id_col = next((r for r in rows if r[1] == 'id'), None)
+            if id_col and id_col[2] == 'INTEGER':
+                # Migrate queue_items table to use TEXT id
+                print("Migrating queue_items table id from INTEGER to TEXT...")
+                # Since this is dev and we have foreign key issues, drop and recreate for simplicity
+                conn.exec_driver_sql("DROP TABLE IF EXISTS queue_items")
+                # Recreate with new schema
+                conn.exec_driver_sql("""
+                    CREATE TABLE queue_items (
+                        id TEXT PRIMARY KEY,
+                        queue_id INTEGER NOT NULL,
+                        reference TEXT UNIQUE,
+                        status TEXT NOT NULL,
+                        priority INTEGER NOT NULL DEFAULT 0,
+                        payload TEXT,
+                        result TEXT,
+                        error_message TEXT,
+                        retries INTEGER NOT NULL DEFAULT 0,
+                        locked_by_robot_id INTEGER,
+                        locked_at TEXT,
+                        job_id INTEGER,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                """)
+                conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_queue_items_queue_id_status ON queue_items(queue_id, status)")
+            else:
+                # Add missing columns to existing table
+                if "reference" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN reference TEXT")
+                if "priority" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN priority INTEGER DEFAULT 0")
+                if "payload" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN payload TEXT")
+                if "result" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN result TEXT")
+                if "error_message" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN error_message TEXT")
+                if "retries" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN retries INTEGER DEFAULT 0")
+                if "locked_by_robot_id" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN locked_by_robot_id INTEGER")
+                if "locked_at" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN locked_at TEXT")
+                if "job_id" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN job_id INTEGER")
+                conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_queue_items_queue_id_status ON queue_items(queue_id, status)")
+                # Add unique constraint on reference if not exists
+                try:
+                    conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_queue_items_reference ON queue_items(reference)")
+                except:
+                    pass  # Index might already exist or reference has duplicates
 
             # Triggers table
             rows = conn.exec_driver_sql("PRAGMA table_info(triggers)").fetchall()
