@@ -78,6 +78,7 @@ export default function AuditPage() {
           <button onClick={() => {
             setSearch(""); setFromTime(""); setToTime(""); setActionType(""); setUser(""); setEntityType(""); setPage(1); load();
           }} style={secondaryBtn}>Clear</button>
+          <button onClick={() => load()} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
         </div>
       </div>
 

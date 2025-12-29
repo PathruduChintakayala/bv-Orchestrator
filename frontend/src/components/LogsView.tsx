@@ -235,7 +235,10 @@ export default function LogsView({ scope, jobExecutionId, jobId }: { scope: Scop
             </div>
           )}
         </div>
-        <button onClick={handleExport} style={primaryBtn}>Export CSV</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => { setOffset(0); void load() }} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
+          <button onClick={handleExport} style={primaryBtn}>Export CSV</button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, background: '#fff', padding: 12, borderRadius: 12, boxShadow: '0 6px 18px rgba(0,0,0,0.05)' }}>
@@ -276,24 +279,24 @@ export default function LogsView({ scope, jobExecutionId, jobId }: { scope: Scop
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
-                <th style={{ paddingBottom: 8, cursor: 'pointer' }} onClick={() => { setOrder(order === 'desc' ? 'asc' : 'desc'); setOffset(0) }}>Time {order === 'desc' ? '↓' : '↑'}</th>
-                <th style={{ paddingBottom: 8 }}>Level</th>
-                <th style={{ paddingBottom: 8 }}>Process</th>
-                <th style={{ paddingBottom: 8 }}>Hostname</th>
-                <th style={{ paddingBottom: 8 }}>Host Identity</th>
-                <th style={{ paddingBottom: 8 }}>Message</th>
+              <tr>
+                <th style={{ cursor: 'pointer' }} onClick={() => { setOrder(order === 'desc' ? 'asc' : 'desc'); setOffset(0) }}>Time {order === 'desc' ? '↓' : '↑'}</th>
+                <th>Level</th>
+                <th>Process</th>
+                <th>Hostname</th>
+                <th>Host Identity</th>
+                <th>Message</th>
               </tr>
             </thead>
             <tbody>
               {visibleLogs.map((l, idx) => (
-                <tr key={`${l.timestamp}-${idx}`} style={{ fontSize: 13, color: '#111827' }}>
-                  <td style={{ padding: '6px 4px', whiteSpace: 'nowrap' }}>{new Date(l.timestamp).toLocaleString()}</td>
-                  <td style={{ padding: '6px 4px' }}><LevelPill level={l.level} /></td>
-                  <td style={{ padding: '6px 4px' }}>{l.processName || l.processId || '—'}</td>
-                  <td style={{ padding: '6px 4px' }}>{l.machineName || l.machineId || '—'}</td>
-                  <td style={{ padding: '6px 4px' }}>{l.hostIdentity || '—'}</td>
-                  <td style={{ padding: '6px 4px', maxWidth: 480, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.message}>{l.message}</td>
+                <tr key={`${l.timestamp}-${idx}`}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{new Date(l.timestamp).toLocaleString()}</td>
+                  <td><LevelPill level={l.level} /></td>
+                  <td>{l.processName || l.processId || '—'}</td>
+                  <td>{l.machineName || l.machineId || '—'}</td>
+                  <td>{l.hostIdentity || '—'}</td>
+                  <td style={{ maxWidth: 480, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.message}>{l.message}</td>
                 </tr>
               ))}
             </tbody>

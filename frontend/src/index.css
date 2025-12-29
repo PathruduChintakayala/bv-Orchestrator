@@ -52,6 +52,41 @@ h1 {
   line-height: 1.1;
 }
 
+/* Global table styles for consistent spacing */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 12px 16px;
+  text-align: left;
+}
+
+th {
+  font-weight: 600;
+  color: #6b7280;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+td {
+  font-size: 14px;
+  color: #111827;
+}
+
+/* Right-align numeric columns */
+th[data-align="right"], td[data-align="right"] {
+  text-align: right;
+}
+
+/* Actions column */
+th[data-type="actions"], td[data-type="actions"] {
+  text-align: right;
+  width: 120px;
+}
+
 button {
   border-radius: 8px;
   border: 1px solid transparent;
