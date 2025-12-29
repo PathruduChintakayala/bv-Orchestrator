@@ -61,6 +61,8 @@ def create_robot(payload: dict, request: Request, session=Depends(get_session), 
         m = session.exec(select(Machine).where(Machine.id == int(machine_id))).first()
         if not m:
             raise HTTPException(status_code=400, detail="Selected machine does not exist")
+        if m.mode != "runner":
+            raise HTTPException(status_code=400, detail="Selected machine is not in runner mode")
 
     credential_asset_id = None
     cred = payload.get("credential")
@@ -128,6 +130,8 @@ def update_robot(robot_id: int, payload: dict, request: Request, session=Depends
             m = session.exec(select(Machine).where(Machine.id == int(mid))).first()
             if not m:
                 raise HTTPException(status_code=400, detail="Selected machine does not exist")
+            if m.mode != "runner":
+                raise HTTPException(status_code=400, detail="Selected machine is not in runner mode")
             r.machine_id = int(mid)
     r.updated_at = now_iso()
     session.add(r)

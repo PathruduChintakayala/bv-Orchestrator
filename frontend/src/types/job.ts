@@ -5,6 +5,7 @@ export type JobStatus = "pending" | "running" | "completed" | "failed" | "cancel
 
 export interface Job {
   id: number;
+  executionId?: string | null;
   processId: number;
   packageId?: number | null;
   packageName?: string | null;

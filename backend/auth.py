@@ -7,7 +7,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt
 from passlib.context import CryptContext
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from .db import get_session
 from .models import User, Role, UserRole, RolePermission
@@ -34,7 +34,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def get_current_user(
     request: Request,
-    session=Depends(get_session),
+    session: Session = Depends(get_session),
     credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
 ) -> User:
     token = credentials.credentials
@@ -51,7 +51,7 @@ def get_current_user(
     return user
 
 @router.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), request: Request = None, session=Depends(get_session)):
+def login(form_data: OAuth2PasswordRequestForm = Depends(), request: Request = None, session: Session = Depends(get_session)):
     stmt = select(User).where(User.username == form_data.username)
     user = session.exec(stmt).first()
     if not user or not verify_password(form_data.password, user.password_hash):
@@ -59,7 +59,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), request: Request = N
     token = create_access_token({"sub": user.username, "is_admin": user.is_admin})
     return {"access_token": token, "token_type": "bearer"}
 
-def ensure_admin_user(session):
+def ensure_admin_user(session: Session):
     existing = session.exec(select(User).where(User.username == "admin")).first()
     if existing:
         return existing
@@ -75,7 +75,7 @@ def ensure_admin_user(session):
 
 
 @router.post("/register")
-def register(payload: dict, session=Depends(get_session)):
+def register(payload: dict, session: Session = Depends(get_session)):
     username = (payload.get("username") or "").strip()
     email = (payload.get("email") or "").strip().lower()
     full_name = (payload.get("fullName") or "").strip()
@@ -109,7 +109,7 @@ def register(payload: dict, session=Depends(get_session)):
 
 
 @router.post("/forgot")
-def forgot_password(payload: dict, session=Depends(get_session)):
+def forgot_password(payload: dict, session: Session = Depends(get_session)):
     username = (payload.get("username") or "").strip()
     email = (payload.get("email") or "").strip().lower()
     new_password = payload.get("newPassword") or ""
@@ -131,7 +131,7 @@ def forgot_password(payload: dict, session=Depends(get_session)):
 
 
 @router.get("/me")
-def get_me(session=Depends(get_session), user: User = Depends(get_current_user)):
+def get_me(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     # Local permission computation to avoid circular import
     by_artifact = {}
     flat = {}

@@ -7,7 +7,7 @@ from sqlmodel import select
 
 from .db import get_session
 from .auth import get_current_user
-from .models import Job, Process, Robot, Package
+from .models import Job, Process, Robot, Package, QueueItem
 from .audit_utils import log_event
 from .permissions import require_permission
 
@@ -15,6 +15,34 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 def now_iso():
     return datetime.now().isoformat(timespec='seconds')
+
+
+def _update_queue_items_for_job(session, job: Job, final_status: str):
+    raw_ids = getattr(job, "queue_item_ids", None)
+    if not raw_ids:
+        return
+    try:
+        ids = json.loads(raw_ids) if isinstance(raw_ids, str) else list(raw_ids)
+    except Exception:
+        return
+    target_status = "DONE" if final_status.lower() == "completed" else "FAILED"
+    now = now_iso()
+    for qid in ids:
+        try:
+            qi = session.exec(select(QueueItem).where(QueueItem.id == qid)).first()
+        except Exception:
+            continue
+        if not qi:
+            continue
+        if qi.status and str(qi.status).upper() in ("DONE", "FAILED"):
+            continue
+        qi.status = target_status
+        if qi.job_id is None:
+            qi.job_id = job.id
+        if target_status == "FAILED" and job.error_message and not qi.error_message:
+            qi.error_message = job.error_message
+        qi.updated_at = now
+        session.add(qi)
 
 def job_to_out(j: Job, session=None) -> dict:
     def parse_json(s: Optional[str]):
@@ -56,11 +84,15 @@ def job_to_out(j: Job, session=None) -> dict:
                 }
     return {
         "id": j.id,
+        "execution_id": getattr(j, "execution_id", None),
         "process_id": j.process_id,
         "package_id": j.package_id,
         "package_name": getattr(j, "package_name", None),
         "package_version": getattr(j, "package_version", None),
         "entrypoint_name": getattr(j, "entrypoint_name", None),
+        "source": getattr(j, "source", None),
+        "trigger_id": getattr(j, "trigger_id", None),
+        "queue_item_ids": parse_json(getattr(j, "queue_item_ids", None)) or [],
         "robot_id": j.robot_id,
         "status": j.status,
         "parameters": parse_json(j.parameters),
@@ -130,12 +162,31 @@ def create_job(payload: dict, request: Request, session=Depends(get_session), us
             params_json = params
         except Exception:
             raise HTTPException(status_code=400, detail="parameters must be JSON")
+    source = payload.get("source") or "MANUAL"
+    trigger_id = payload.get("trigger_id") or None
+    queue_item_ids = None
+    if "queue_item_ids" in payload and payload.get("queue_item_ids") is not None:
+        qids = payload.get("queue_item_ids")
+        if isinstance(qids, list):
+            queue_item_ids = json.dumps(qids)
+        elif isinstance(qids, str):
+            try:
+                parsed = json.loads(qids)
+                if isinstance(parsed, list):
+                    queue_item_ids = qids
+            except Exception:
+                raise HTTPException(status_code=400, detail="queue_item_ids must be JSON array")
+        else:
+            raise HTTPException(status_code=400, detail="queue_item_ids must be a list")
     j = Job(
         process_id=pid,
         package_id=p.package_id,
         package_name=(pkg.name if pkg else None),
         package_version=(pkg.version if pkg else None),
         entrypoint_name=entrypoint_snapshot,
+        source=source,
+        trigger_id=trigger_id,
+        queue_item_ids=queue_item_ids,
         robot_id=rid,
         status="pending",
         parameters=params_json,
@@ -159,12 +210,15 @@ def update_job(job_id: int, payload: dict, request: Request, session=Depends(get
     if not j:
         raise HTTPException(status_code=404, detail="Job not found")
     before_status = j.status
+    final_status = None
     if "status" in payload and payload.get("status"):
         j.status = str(payload["status"]).strip()
         if j.status == "running" and not j.started_at:
             j.started_at = now_iso()
         if j.status in ("completed", "failed", "canceled"):
             j.finished_at = now_iso()
+            if j.status in ("completed", "failed"):
+                final_status = j.status
     if "robot_id" in payload:
         rid = payload.get("robot_id")
         if rid is not None:
@@ -187,6 +241,8 @@ def update_job(job_id: int, payload: dict, request: Request, session=Depends(get
                     raise HTTPException(status_code=400, detail="result must be JSON")
     if "error_message" in payload:
         j.error_message = payload.get("error_message") or None
+    if final_status:
+        _update_queue_items_for_job(session, j, final_status)
     session.add(j)
     session.commit()
     session.refresh(j)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Process } from "../types/processes";
 import { fetchProcesses, createProcess, updateProcess, deleteProcess } from "../api/processes";
 import { fetchPackages } from "../api/packages";
@@ -39,19 +39,17 @@ export default function ProcessesPage() {
 
   async function handleSave(values: FormValues) {
     try {
-      const selectedPkg = values.packageId ? packages.find(p => p.id === values.packageId) : undefined;
-      const isBv = !!selectedPkg?.isBvpackage;
-
       const payload: any = {
         name: values.name,
-        description: values.description || undefined,
         isActive: values.isActive,
       };
-      if (values.packageId) payload.packageId = values.packageId;
 
-      if (isBv) {
+      if (values.packageId) {
+        payload.packageId = values.packageId;
+      }
+
+      if (values.isBv) {
         payload.entrypointName = values.entrypointName;
-        // Do not send scriptPath for BV packages.
       } else {
         payload.scriptPath = values.scriptPath;
         payload.entrypointName = null;
@@ -139,130 +137,245 @@ export default function ProcessesPage() {
 }
 
 function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Process | null; onCancel: ()=>void; onSave:(v:FormValues)=>void; packages: import('../types/package').Package[] }) {
-  const [form, setForm] = useState<FormValues>({
-    name: initial?.name || "",
-    packageId: initial?.packageId ?? undefined,
-    scriptPath: initial?.scriptPath || "",
-    entrypointName: initial?.entrypointName || "",
-    description: initial?.description || "",
-    isActive: initial?.isActive ?? true,
-  });
-  const [saving, setSaving] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [packageName, setPackageName] = useState<string | undefined>(initial?.package?.name);
+    const [packageVersion, setPackageVersion] = useState<string | undefined>(initial?.package?.version);
+    const [entrypointName, setEntrypointName] = useState<string | undefined>(initial?.entrypointName || undefined);
 
-  const selectedPackage = form.packageId ? packages.find(p => p.id === Number(form.packageId)) : undefined;
-  const isBv = !!selectedPackage?.isBvpackage;
+    const packageNames = useMemo(() => {
+      const set = new Set<string>();
+      packages.forEach((p) => set.add(p.name));
+      return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, [packages]);
 
-  // When switching to a BV package, preselect its default entrypoint.
-  useEffect(() => {
-    if (!isBv) return;
-    const eps = selectedPackage?.entrypoints || [];
-    const defaultName = selectedPackage?.defaultEntrypoint || eps.find(e => e.default)?.name || eps[0]?.name;
-    setForm(prev => ({
-      ...prev,
-      entrypointName: prev.entrypointName || defaultName || "",
-      // script_path is ignored for BV packages
-    }));
-  }, [isBv, selectedPackage?.id]);
+    const versionsForSelected = useMemo(() => {
+      if (!packageName) return [];
+      return packages.filter((p) => p.name === packageName).map((p) => p.version).sort();
+    }, [packages, packageName]);
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
-    const { name, value } = e.target as any;
-    if (name === 'packageId') {
-      setForm(prev => ({ ...prev, packageId: value ? Number(value) : undefined }));
-      return;
+    const selectedPackage = useMemo(() => {
+      if (!packageName || !packageVersion) return undefined;
+      return packages.find((p) => p.name === packageName && p.version === packageVersion);
+    }, [packages, packageName, packageVersion]);
+
+    const entrypoints = useMemo(() => selectedPackage?.entrypoints || [], [selectedPackage]);
+
+    const [form, setForm] = useState<FormValues>({
+      name: initial?.name || "",
+      isActive: initial?.isActive ?? true,
+      scriptPath: initial?.scriptPath || "",
+      entrypointName: initial?.entrypointName || "",
+      packageId: initial?.packageId ?? undefined,
+      isBv: !!selectedPackage?.isBvpackage,
+    });
+
+    useEffect(() => {
+      const isBv = !!selectedPackage?.isBvpackage;
+      const defaultEp = entrypoints.find((e) => e.name === selectedPackage?.defaultEntrypoint)?.name || entrypoints.find((e) => e.default)?.name || entrypoints[0]?.name || "";
+      setForm((prev) => ({
+        ...prev,
+        packageId: selectedPackage?.id,
+        isBv,
+        entrypointName: isBv ? (entrypointName || defaultEp || "") : "",
+        scriptPath: isBv ? "" : prev.scriptPath,
+      }));
+      if (isBv && !entrypointName) {
+        setEntrypointName(defaultEp || undefined);
+      }
+    }, [selectedPackage, entrypoints, entrypointName]);
+
+    function handleNameChange(val: string) {
+      setForm((prev) => ({ ...prev, name: val }));
     }
-    setForm(prev => ({ ...prev, [name]: value }));
-  }
 
-  function toggleActive() { setForm(prev => ({ ...prev, isActive: !prev.isActive })); }
-
-  async function submit() {
-    if (!form.name.trim()) { alert('Name is required'); return; }
-    if (isBv) {
-      if (!form.packageId) { alert('Package is required'); return; }
-      if (!form.entrypointName.trim()) { alert('Entrypoint is required'); return; }
-    } else {
-      if (!form.scriptPath.trim()) { alert('Script Path is required'); return; }
+    function handleScriptPathChange(val: string) {
+      setForm((prev) => ({ ...prev, scriptPath: val }));
     }
-    try {
-      setSaving(true);
-      await onSave(form);
-    } finally {
-      setSaving(false);
-    }
-  }
 
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
-      <div style={{
-        width: '100%',
-        maxWidth: 600,
-        background: '#fff',
-        borderRadius: 16,
-        boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-        padding: 24,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 16,
-      }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>{initial ? 'Edit Process' : 'New Process'}</h2>
-        <div style={{ display: 'grid', gap: 10 }}>
-          <label>
-            <div style={label}>Name</div>
-            <input name="name" value={form.name} onChange={handleChange} style={input} />
-          </label>
-          <label>
-            <div style={label}>Package</div>
-            <select name="packageId" value={form.packageId ?? ''} onChange={handleChange} style={input}>
-              <option value="">(none)</option>
-              {packages.map(p => (
-                <option key={p.id} value={p.id}>{p.name} ({p.version})</option>
-              ))}
-            </select>
-          </label>
-          {isBv ? (
+    function toggleActive() {
+      setForm((prev) => ({ ...prev, isActive: !prev.isActive }));
+    }
+
+    function selectPackage(name?: string) {
+      setPackageName(name || undefined);
+      setPackageVersion(undefined);
+      setEntrypointName(undefined);
+    }
+
+    function selectVersion(version?: string) {
+      setPackageVersion(version || undefined);
+      setEntrypointName(undefined);
+    }
+
+    function selectEntrypoint(ep?: string) {
+      setEntrypointName(ep || undefined);
+      setForm((prev) => ({ ...prev, entrypointName: ep || "" }));
+    }
+
+    async function submit() {
+      if (!form.name.trim()) { alert('Name is required'); return; }
+      if (selectedPackage?.isBvpackage) {
+        if (!packageName || !packageVersion || !selectedPackage?.id) { alert('Package and version are required'); return; }
+        if (!entrypointName) { alert('Entrypoint is required'); return; }
+      } else {
+        if (!form.scriptPath.trim()) { alert('Script Path is required'); return; }
+      }
+      try {
+        setSaving(true);
+        await onSave({
+          ...form,
+          packageId: selectedPackage?.id,
+          entrypointName: selectedPackage?.isBvpackage ? entrypointName || '' : '',
+          isBv: !!selectedPackage?.isBvpackage,
+        });
+      } finally {
+        setSaving(false);
+      }
+    }
+
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
+        <div style={{
+          width: '100%',
+          maxWidth: 680,
+          background: '#fff',
+          borderRadius: 16,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+          padding: 24,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16,
+        }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>{initial ? 'Edit Process' : 'New Process'}</h2>
+          <div style={{ display: 'grid', gap: 12 }}>
             <label>
-              <div style={label}>Entrypoint</div>
-              <select name="entrypointName" value={form.entrypointName || ''} onChange={handleChange} style={input}>
-                <option value="">Select an entrypoint</option>
-                {(selectedPackage?.entrypoints || []).map(ep => (
-                  <option key={ep.name} value={ep.name}>{ep.name}{ep.name === selectedPackage?.defaultEntrypoint ? ' (default)' : ''}</option>
-                ))}
-              </select>
-              <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
-                Entrypoints are defined by the package and cannot be edited here.
+              <div style={label}>Name</div>
+              <input name="name" value={form.name} onChange={(e) => handleNameChange(e.target.value)} style={input} />
+            </label>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={label}>Package</div>
+              <SearchableSelect
+                options={packageNames.map((n) => ({ label: n, value: n }))}
+                value={packageName}
+                placeholder="Select package"
+                onChange={(val) => selectPackage(val || undefined)}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={label}>Version</div>
+              <SearchableSelect
+                options={versionsForSelected.map((v) => ({ label: v, value: v }))}
+                value={packageVersion}
+                placeholder={packageName ? 'Select version' : 'Select package first'}
+                disabled={!packageName}
+                onChange={(val) => selectVersion(val || undefined)}
+              />
+            </div>
+
+            {selectedPackage?.isBvpackage ? (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={label}>Entrypoint</div>
+                <SearchableSelect
+                  options={entrypoints.map((ep) => ({ label: ep.name + (ep.name === selectedPackage?.defaultEntrypoint ? ' (default)' : ''), value: ep.name }))}
+                  value={entrypointName}
+                  placeholder="Select entrypoint"
+                  disabled={!packageVersion}
+                  onChange={(val) => selectEntrypoint(val || undefined)}
+                />
               </div>
+            ) : (
+              <label>
+                <div style={label}>Script Path</div>
+                <input name="scriptPath" value={form.scriptPath} onChange={(e) => handleScriptPathChange(e.target.value)} style={input} />
+              </label>
+            )}
+
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="checkbox" checked={form.isActive} onChange={toggleActive} />
+              <span>Active</span>
             </label>
-          ) : (
-            <label>
-              <div style={label}>Script Path</div>
-              <input name="scriptPath" value={form.scriptPath} onChange={handleChange} style={input} />
-            </label>
-          )}
-          <label>
-            <div style={label}>Description</div>
-            <textarea name="description" value={form.description || ''} onChange={handleChange} style={{...input, minHeight: 60}} />
-          </label>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input type="checkbox" checked={form.isActive} onChange={toggleActive} />
-            <span>Active</span>
-          </label>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-          <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
-          <button onClick={submit} disabled={saving} style={primaryBtn}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+            <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
+            <button onClick={submit} disabled={saving} style={primaryBtn}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
+  type SelectOption = { label: string; value: string };
+
+  function SearchableSelect({ options, value, onChange, placeholder, disabled }: { options: SelectOption[]; value?: string; onChange: (v?: string) => void; placeholder?: string; disabled?: boolean }) {
+    const [open, setOpen] = useState(false);
+    const [filter, setFilter] = useState('');
+
+    const filtered = useMemo(() => {
+      const f = filter.toLowerCase();
+      return options.filter((o) => o.label.toLowerCase().includes(f));
+    }, [options, filter]);
+
+    const selectedLabel = options.find((o) => o.value === value)?.label;
+
+    function select(val: string) {
+      onChange(val);
+      setOpen(false);
+      setFilter('');
+    }
+
+    return (
+      <div style={{ position: 'relative' }}>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => !disabled && setOpen((o) => !o)}
+          style={{
+            ...input,
+            textAlign: 'left',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            color: selectedLabel ? '#111827' : '#6b7280',
+          }}
+        >
+          {selectedLabel || placeholder || 'Select'}
+        </button>
+        {open && !disabled && (
+          <div style={{ position: 'absolute', zIndex: 20, marginTop: 6, width: '100%', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,0.08)', maxHeight: 260, overflow: 'hidden' }}>
+            <div style={{ padding: 8 }}>
+              <input
+                autoFocus
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Search…"
+                style={{ ...input, width: '100%' }}
+              />
+            </div>
+            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+              {filtered.length === 0 && <div style={{ padding: 10, color: '#6b7280', fontSize: 13 }}>No matches</div>}
+              {filtered.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => select(o.value)}
+                  style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: o.value === value ? '#eff6ff' : '#fff', border: 'none', borderTop: '1px solid #f3f4f6', cursor: 'pointer' }}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 type FormValues = {
   name: string;
   packageId?: number;
   scriptPath: string;
   entrypointName: string;
-  description?: string | null;
   isActive: boolean;
+  isBv: boolean;
 };
 
 const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', width: '100%', maxWidth: '100%', boxSizing: 'border-box' };
