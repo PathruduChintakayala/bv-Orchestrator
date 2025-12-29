@@ -118,12 +118,21 @@ def init_db():
                 conn.exec_driver_sql("ALTER TABLE queues ADD COLUMN description TEXT")
             if "is_active" not in cols:
                 conn.exec_driver_sql("ALTER TABLE queues ADD COLUMN is_active INTEGER DEFAULT 1")
+            else:
+                # Ensure default is set
+                conn.exec_driver_sql("ALTER TABLE queues ALTER COLUMN is_active SET DEFAULT 1")
+                # Backfill any NULL values to 1
+                conn.exec_driver_sql("UPDATE queues SET is_active = 1 WHERE is_active IS NULL")
             if "max_retries" not in cols:
                 conn.exec_driver_sql("ALTER TABLE queues ADD COLUMN max_retries INTEGER DEFAULT 0")
             if "external_id" not in cols:
                 conn.exec_driver_sql("ALTER TABLE queues ADD COLUMN external_id TEXT")
                 conn.exec_driver_sql("UPDATE queues SET external_id = lower(hex(randomblob(16))) WHERE external_id IS NULL")
                 conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_queues_external_id ON queues(external_id)")
+            if "enforce_unique_reference" not in cols:
+                conn.exec_driver_sql("ALTER TABLE queues ADD COLUMN enforce_unique_reference INTEGER DEFAULT 0")
+            # Ensure existing rows have the default value
+            conn.exec_driver_sql("UPDATE queues SET enforce_unique_reference = 0 WHERE enforce_unique_reference IS NULL")
 
             rows = conn.exec_driver_sql("PRAGMA table_info(queue_items)").fetchall()
             cols = {r[1] for r in rows}
@@ -175,11 +184,11 @@ def init_db():
                 if "job_id" not in cols:
                     conn.exec_driver_sql("ALTER TABLE queue_items ADD COLUMN job_id INTEGER")
                 conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_queue_items_queue_id_status ON queue_items(queue_id, status)")
-                # Add unique constraint on reference if not exists
+                # Remove unique constraint on reference since it's now optional per queue
                 try:
-                    conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_queue_items_reference ON queue_items(reference)")
+                    conn.exec_driver_sql("DROP INDEX IF EXISTS uq_queue_items_queue_id_reference")
                 except:
-                    pass  # Index might already exist or reference has duplicates
+                    pass  # Index might not exist
 
             # Triggers table
             rows = conn.exec_driver_sql("PRAGMA table_info(triggers)").fetchall()

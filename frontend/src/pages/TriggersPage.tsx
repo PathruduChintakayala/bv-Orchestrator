@@ -8,6 +8,120 @@ import { fetchProcesses } from '../api/processes'
 import { fetchQueues } from '../api/queues'
 import { fetchRobots } from '../api/robots'
 
+const TIMEZONE_OPTIONS = [
+  { value: 'UTC', label: '(UTC) Coordinated Universal Time' },
+  { value: 'Africa/Cairo', label: '(UTC+02:00) Cairo' },
+  { value: 'Africa/Johannesburg', label: '(UTC+02:00) Johannesburg' },
+  { value: 'Africa/Lagos', label: '(UTC+01:00) Lagos' },
+  { value: 'America/Anchorage', label: '(UTC-09:00) Anchorage' },
+  { value: 'America/Argentina/Buenos_Aires', label: '(UTC-03:00) Buenos Aires' },
+  { value: 'America/Bogota', label: '(UTC-05:00) Bogota' },
+  { value: 'America/Chicago', label: '(UTC-06:00) Central Time (US & Canada)' },
+  { value: 'America/Denver', label: '(UTC-07:00) Mountain Time (US & Canada)' },
+  { value: 'America/Los_Angeles', label: '(UTC-08:00) Pacific Time (US & Canada)' },
+  { value: 'America/Mexico_City', label: '(UTC-06:00) Mexico City' },
+  { value: 'America/New_York', label: '(UTC-05:00) Eastern Time (US & Canada)' },
+  { value: 'America/Sao_Paulo', label: '(UTC-03:00) Sao Paulo' },
+  { value: 'America/Toronto', label: '(UTC-05:00) Toronto' },
+  { value: 'America/Vancouver', label: '(UTC-08:00) Vancouver' },
+  { value: 'Asia/Dubai', label: '(UTC+04:00) Dubai' },
+  { value: 'Asia/Hong_Kong', label: '(UTC+08:00) Hong Kong' },
+  { value: 'Asia/Kolkata', label: '(UTC+05:30) Chennai, Kolkata, Mumbai, New Delhi' },
+  { value: 'Asia/Shanghai', label: '(UTC+08:00) Shanghai' },
+  { value: 'Asia/Singapore', label: '(UTC+08:00) Singapore' },
+  { value: 'Asia/Tokyo', label: '(UTC+09:00) Tokyo' },
+  { value: 'Europe/Amsterdam', label: '(UTC+01:00) Amsterdam' },
+  { value: 'Europe/Berlin', label: '(UTC+01:00) Berlin' },
+  { value: 'Europe/London', label: '(UTC+00:00) London' },
+  { value: 'Europe/Moscow', label: '(UTC+03:00) Moscow' },
+  { value: 'Europe/Paris', label: '(UTC+01:00) Paris' },
+  { value: 'Europe/Rome', label: '(UTC+01:00) Rome' },
+  { value: 'Europe/Zurich', label: '(UTC+01:00) Zurich' },
+  { value: 'Pacific/Auckland', label: '(UTC+12:00) Auckland' },
+  { value: 'Pacific/Honolulu', label: '(UTC-10:00) Honolulu' },
+  { value: 'Pacific/Sydney', label: '(UTC+10:00) Sydney' },
+]
+
+const ALL_TIMEZONES = TIMEZONE_OPTIONS.map(o => o.value)
+
+function SearchableSelect({ value, onChange, options, placeholder, error }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; placeholder?: string; error?: boolean }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [selectedIndex, setSelectedIndex] = useState(-1)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 200)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const filtered = options.filter(o => o.label.toLowerCase().includes(debouncedSearch.toLowerCase()) || o.value.toLowerCase().includes(debouncedSearch.toLowerCase()))
+  const selectedOption = options.find(o => o.value === value)
+
+  useEffect(() => {
+    setSelectedIndex(-1)
+  }, [debouncedSearch])
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!open) {
+      if (e.key === 'Enter' || e.key === 'ArrowDown') {
+        setOpen(true)
+        setSelectedIndex(0)
+      }
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      setSelectedIndex(prev => Math.min(prev + 1, filtered.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      setSelectedIndex(prev => Math.max(prev - 1, 0))
+    } else if (e.key === 'Enter' && selectedIndex >= 0) {
+      onChange(filtered[selectedIndex].value)
+      setOpen(false)
+      setSearch('')
+    } else if (e.key === 'Escape') {
+      setOpen(false)
+      setSearch('')
+    }
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type="text"
+        value={open ? search : selectedOption?.label || ''}
+        onChange={e => setSearch(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        style={{ ...input, ...(error ? { borderColor: '#dc2626' } : {}) }}
+      />
+      {open && (
+        <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, maxHeight: 200, overflowY: 'auto', zIndex: 1000, listStyle: 'none', margin: 0, padding: 0 }}>
+          {filtered.length === 0 ? (
+            <li style={{ padding: '8px 12px', color: '#6b7280' }}>No results</li>
+          ) : (
+            filtered.map((o, i) => (
+              <li
+                key={o.value}
+                onMouseDown={() => { onChange(o.value); setOpen(false); setSearch('') }}
+                style={{
+                  padding: '8px 12px',
+                  cursor: 'pointer',
+                  background: i === selectedIndex ? '#f3f4f6' : '#fff',
+                  borderBottom: i < filtered.length - 1 ? '1px solid #e5e7eb' : 'none'
+                }}
+              >
+                {o.label}
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export default function TriggersPage() {
   const [items, setItems] = useState<Trigger[]>([])
   const [processes, setProcesses] = useState<Process[]>([])
@@ -260,7 +374,13 @@ function TriggerForm({ form, setForm, processes, queues, robots }: { form: FormV
         <>
           <label style={label}>
             <div>Timezone</div>
-            <input style={{ ...input, ...(errors.timezone ? { borderColor: '#dc2626' } : {}) }} value={form.timezone} onChange={e => setForm(f => ({ ...f, timezone: e.target.value }))} />
+            <SearchableSelect
+              value={form.timezone}
+              onChange={tz => setForm(f => ({ ...f, timezone: tz }))}
+              options={TIMEZONE_OPTIONS}
+              placeholder="Search timezones..."
+              error={!!errors.timezone}
+            />
             {errors.timezone && <span style={errorText}>{errors.timezone}</span>}
           </label>
           <label style={label}>
@@ -554,6 +674,7 @@ function validate(form: FormValues, cronResult: { cron: string | null; error?: s
   if (!form.processId) errs.processId = 'Process is required'
   if (form.type === 'TIME') {
     if (!form.timezone.trim()) errs.timezone = 'Timezone is required'
+    else if (!ALL_TIMEZONES.includes(form.timezone)) errs.timezone = 'Invalid timezone'
     if (cronResult.error || !cronResult.cron) errs.cronExpression = cronResult.error || 'Cron is required'
     switch (form.frequency) {
       case 'MINUTE':

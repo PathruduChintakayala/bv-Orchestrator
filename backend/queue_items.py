@@ -8,7 +8,9 @@ from datetime import datetime
 import json
 from .audit_utils import log_event
 from .permissions import require_permission
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter(prefix="/queue-items", tags=["queue-items"])
 
@@ -37,9 +39,9 @@ def list_items(
     queue_id: Optional[int] = Query(default=None),
     status: Optional[str] = Query(default=None),
 ):
-    q = select(QueueItem)
-    if queue_id is not None:
-        q = q.where(QueueItem.queue_id == queue_id)
+    if queue_id is None:
+        raise HTTPException(status_code=400, detail="queue_id parameter is required")
+    q = select(QueueItem).where(QueueItem.queue_id == queue_id)
     if status:
         q = q.where(QueueItem.status == status)
     items = session.exec(q).all()
@@ -61,11 +63,11 @@ def create_item(payload: CreateQueueItemRequest, request: Request, session: Sess
     if not queue:
         raise HTTPException(status_code=400, detail="Queue does not exist")
     
-    # enforce unique reference if provided
-    if payload.reference:
-        existing = session.exec(select(QueueItem).where(QueueItem.reference == payload.reference)).first()
+    # enforce unique reference if enabled for this queue
+    if queue.enforce_unique_reference and payload.reference:
+        existing = session.exec(select(QueueItem).where(QueueItem.queue_id == payload.queue_id, QueueItem.reference == payload.reference)).first()
         if existing:
-            raise HTTPException(status_code=400, detail="Queue item reference already exists")
+            raise HTTPException(status_code=409, detail="Reference already exists in this queue.")
     
     now = utcnow_iso()
     obj = QueueItem(
@@ -84,7 +86,11 @@ def create_item(payload: CreateQueueItemRequest, request: Request, session: Sess
         updated_at=now,
     )
     session.add(obj)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="Reference already exists in this queue.")
     session.refresh(obj)
     try:
         log_event(session, action="queue_item.create", entity_type="queue_item", entity_id=obj.id, entity_name=str(obj.reference or obj.id), before=None, after={"queue_id": obj.queue_id, "status": obj.status}, metadata=None, request=request, user=user)
