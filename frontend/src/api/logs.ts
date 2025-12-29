@@ -26,7 +26,7 @@ export async function fetchLogs(params: LogQuery): Promise<{ items: LogEntry[]; 
   if (params.limit) qs.set("limit", String(params.limit));
   if (params.offset) qs.set("offset", String(params.offset));
   if (params.order) qs.set("order", params.order);
-  const res = await fetch(`/api/logs${qs.toString() ? `?${qs.toString()}` : ""}`, { headers: authHeaders() });
+  const res = await fetch(`/api/logs/${qs.toString() ? `?${qs.toString()}` : ""}`, { headers: authHeaders() });
   if (!res.ok) {
     const err: any = new Error(await readError(res));
     err.status = res.status;
