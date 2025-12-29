@@ -1,4 +1,5 @@
 import type { Package } from "../types/package";
+import type { EntrypointParameter } from "../types/entrypoint";
 
 function toCamel<T extends Record<string, any>>(obj: T): any {
   if (obj === null || typeof obj !== "object") return obj;
@@ -63,4 +64,12 @@ export async function updatePackage(id: number, payload: Partial<{ name: string;
 export async function deletePackage(id: number): Promise<void> {
   const res = await fetch(`/api/packages/${id}`, { method: "DELETE", headers: authHeaders() });
   if (!res.ok) throw new Error(await readError(res));
+}
+
+export async function fetchEntrypointSignature(packageId: number, entrypointName: string): Promise<EntrypointParameter[]> {
+  const res = await fetch(`/api/packages/${packageId}/entrypoints/${encodeURIComponent(entrypointName)}/signature`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(await readError(res));
+  const data = await res.json();
+  const params = (data?.parameters || []) as EntrypointParameter[];
+  return params.map((p) => ({ ...p }));
 }

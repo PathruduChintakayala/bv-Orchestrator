@@ -5,7 +5,9 @@ from fastapi.responses import JSONResponse
 from sqlmodel import select
 from jose import jwt
 
-from .db import init_db, get_session
+from sqlmodel import Session
+
+from .db import engine, init_db
 from .auth import router as auth_router, ensure_admin_user
 from .dashboard import router as dashboard_router
 from .assets import router as assets_router
@@ -16,12 +18,16 @@ from .machines import router as machines_router
 from .jobs import router as jobs_router
 from .queues import router as queues_router
 from .queue_items import router as queue_items_router
+from .triggers import router as triggers_router
 from .access import router as access_router
 from .access import ensure_default_roles
 from .audit import router as audit_router
 from .settings import router as settings_router
 from .runner import router as runner_router
 from .sdk_auth import router as sdk_auth_router
+from .job_execution_logs import router as job_execution_logs_router
+from .logs import router as logs_router
+from .trigger_scheduler import scheduler
 from .models import User
 from .auth import SECRET_KEY, ALGORITHM
 
@@ -83,12 +89,15 @@ def read_root():
 @app.on_event("startup")
 def on_startup():
     init_db()
-    session = get_session()
-    try:
+    with Session(engine) as session:
         ensure_admin_user(session)
         ensure_default_roles(session)
-    finally:
-        session.close()
+    scheduler.start()
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    await scheduler.stop()
 
 # Auth routes (under /api for consistency)
 app.include_router(auth_router, prefix="/api")
@@ -101,8 +110,11 @@ app.include_router(machines_router, prefix="/api")
 app.include_router(jobs_router, prefix="/api")
 app.include_router(queues_router, prefix="/api")
 app.include_router(queue_items_router, prefix="/api")
+app.include_router(triggers_router, prefix="/api")
 app.include_router(access_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
 app.include_router(runner_router, prefix="/api")
 app.include_router(sdk_auth_router, prefix="/api")
+app.include_router(job_execution_logs_router, prefix="/api")
+app.include_router(logs_router, prefix="/api")

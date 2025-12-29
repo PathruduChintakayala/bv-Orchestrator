@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Job, JobStatus } from "../types/job";
 import { fetchJobs, createJob, cancelJob } from "../api/jobs";
 import { fetchProcesses } from "../api/processes";
@@ -10,13 +10,22 @@ export default function JobsPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<JobStatus | "">("");
   const [modalOpen, setModalOpen] = useState(false);
-  const [processes, setProcesses] = useState<import('../types/processes').Process[]>([]);
-  const [robots, setRobots] = useState<import('../types/robot').Robot[]>([]);
+  type FetchState<T> = { status: 'idle' | 'loading' | 'ready' | 'error'; data: T; error?: string };
+  const [processesState, setProcessesState] = useState<FetchState<import('../types/processes').Process[]>>({ status: 'idle', data: [] });
+  const [robotsState, setRobotsState] = useState<FetchState<import('../types/robot').Robot[]>>({ status: 'idle', data: [] });
 
   useEffect(() => {
     load();
-    fetchProcesses({ activeOnly: true }).then(setProcesses).catch(()=>{});
-    fetchRobots().then(setRobots).catch(()=>{});
+    setProcessesState({ status: 'loading', data: [] });
+    setRobotsState({ status: 'loading', data: [] });
+
+    fetchProcesses({ activeOnly: true })
+      .then((data) => setProcessesState({ status: 'ready', data }))
+      .catch((e: any) => setProcessesState({ status: 'error', data: [], error: e?.message || 'Failed to load processes' }));
+
+    fetchRobots()
+      .then((data) => setRobotsState({ status: 'ready', data }))
+      .catch((e: any) => setRobotsState({ status: 'error', data: [], error: e?.message || 'Failed to load robots' }));
     // Open modal if hash includes trigger flag
     try {
       const hash = window.location.hash || '#/jobs'
@@ -44,7 +53,7 @@ export default function JobsPage() {
 
   async function handleTrigger(values: FormValues) {
     try {
-      const payload = { processId: values.processId!, robotId: values.robotId ?? null, parameters: values.parameters || undefined };
+      const payload = { processId: values.processId!, robotId: values.robotId ?? null, parameters: null };
       await createJob(payload);
       closeModal();
       await load();
@@ -133,6 +142,14 @@ export default function JobsPage() {
                     {(j.status === 'pending' || j.status === 'running') && (
                       <button style={dangerBtn} onClick={()=>handleCancel(j.id)}>Cancel</button>
                     )}
+                    {j.executionId && (
+                      <button
+                        style={{ ...secondaryBtn, marginLeft: 8 }}
+                        onClick={() => { window.location.hash = `#/jobs/${j.id}/logs/${j.executionId}`; }}
+                      >
+                        View Logs
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -145,80 +162,106 @@ export default function JobsPage() {
       </div>
 
       {modalOpen && (
-        <TriggerModal processes={processes} robots={robots} onCancel={closeModal} onSave={handleTrigger} />
+        <TriggerModal processesState={processesState} robotsState={robotsState} onCancel={closeModal} onSave={handleTrigger} />
       )}
     </div>
   );
 }
 
-function TriggerModal({ processes, robots, onCancel, onSave }: { processes: import('../types/processes').Process[]; robots: import('../types/robot').Robot[]; onCancel: () => void; onSave: (v: FormValues) => void }) {
-  const [form, setForm] = useState<FormValues>({ processId: undefined, robotId: undefined, parametersText: '' });
+function TriggerModal({ processesState, robotsState, onCancel, onSave }: { processesState: { status: 'idle' | 'loading' | 'ready' | 'error'; data: import('../types/processes').Process[]; error?: string }; robotsState: { status: 'idle' | 'loading' | 'ready' | 'error'; data: import('../types/robot').Robot[]; error?: string }; onCancel: () => void; onSave: (v: FormValues) => void }) {
+  const processes = processesState.data;
+  const robots = robotsState.data;
+  const [form, setForm] = useState<FormValues>({ processId: undefined, robotId: undefined });
   const [saving, setSaving] = useState(false);
+  const currentProcess = useMemo(() => processes.find(p => p.id === form.processId) || null, [processes, form.processId]);
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
-    const name = (e.target as any).name as string;
-    const value = (e.target as any).value as string;
-    const isIdField = name === 'processId' || name === 'robotId';
-    setForm(prev => ({ ...prev, [name]: isIdField ? (value ? Number(value) : undefined) : value }));
-  }
-
-  function parseParams(): Record<string, unknown> | undefined {
-    const t = (form.parametersText || '').trim();
-    if (!t) return undefined;
-    try {
-      return JSON.parse(t);
-    } catch {
-      alert('Parameters must be valid JSON');
-      return undefined;
+  useEffect(() => {
+    if (!form.processId && processes.length > 0) {
+      setForm(prev => ({ ...prev, processId: processes[0].id }));
     }
+  }, [processes, form.processId]);
+
+  function handleProcessChange(val?: number) {
+    setForm(prev => ({ ...prev, processId: val }));
   }
+
+  function handleRobotChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const value = e.target.value
+    setForm(prev => ({ ...prev, robotId: value ? Number(value) : undefined }))
+  }
+
+  
 
   async function submit() {
     if (!form.processId) {
-      alert('Process is required');
-      return;
+      alert('Process is required')
+      return
     }
-    const params = parseParams();
-    if (form.parametersText && !params) return;
+
     try {
-      setSaving(true);
-      await onSave({ processId: form.processId, robotId: form.robotId, parameters: params });
+      setSaving(true)
+      await onSave({ processId: form.processId, robotId: form.robotId, parameters: null })
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
+  const loadingData = processesState.status === 'loading' || robotsState.status === 'loading';
+  const dataError = processesState.status === 'error' ? processesState.error : robotsState.status === 'error' ? robotsState.error : null;
+  const ready = processesState.status === 'ready' && robotsState.status === 'ready';
+  const canSubmit = ready && !!form.processId;
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
-      <div style={{ width: '100%', maxWidth: 640, background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ width: '100%', maxWidth: 760, background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>Trigger Job</h2>
-        <div style={{ display: 'grid', gap: 10 }}>
-          <label>
-            <div style={label}>Process</div>
-            <select name="processId" value={form.processId ?? ''} onChange={handleChange} style={input}>
-              <option value="">Select a process</option>
-              {processes.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <div style={label}>Robot (optional)</div>
-            <select name="robotId" value={form.robotId ?? ''} onChange={handleChange} style={input}>
-              <option value="">Any available (unassigned)</option>
-              {robots.map(r => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <div style={label}>Parameters (JSON, optional)</div>
-            <textarea name="parametersText" value={form.parametersText || ''} onChange={handleChange} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', width: '100%', maxWidth: '100%', boxSizing: 'border-box', minHeight: 100 }} placeholder='e.g. {"invoiceId":123}' />
-          </label>
-        </div>
+
+        {loadingData && (
+          <div style={{ fontSize: 14, color: '#6b7280' }}>Loading processes and robots…</div>
+        )}
+
+        {dataError && (
+          <div style={{ fontSize: 14, color: '#b91c1c' }}>Failed to load required data. {dataError}</div>
+        )}
+
+        {ready && (
+          <div style={{ display: 'grid', gap: 12 }}>
+            {processes.length === 0 && (
+              <div style={{ fontSize: 14, color: '#6b7280' }}>No processes available. Please create a process first.</div>
+            )}
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={label}>Process</div>
+              <SearchableSelect
+                options={processes.map((p) => ({ label: p.name, value: String(p.id) }))}
+                value={form.processId ? String(form.processId) : undefined}
+                placeholder={processes.length ? 'Select process' : 'No processes'}
+                onChange={(val) => handleProcessChange(val ? Number(val) : undefined)}
+                disabled={processes.length === 0}
+              />
+              {currentProcess && (
+                <div style={{ fontSize: 12, color: '#6b7280' }}>
+                  {currentProcess.package?.name ? `${currentProcess.package.name} ${currentProcess.package.version || ''}`.trim() : 'Legacy process'}
+                  {currentProcess.entrypointName ? ` • Entrypoint: ${currentProcess.entrypointName}` : currentProcess.scriptPath ? ` • Script: ${currentProcess.scriptPath}` : ''}
+                </div>
+              )}
+            </div>
+
+            <label>
+              <div style={label}>Robot (optional)</div>
+              <select name="robotId" value={form.robotId ?? ''} onChange={handleRobotChange} style={input}>
+                <option value="">Any available (unassigned)</option>
+                {robots.map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            </label>
+
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
-          <button onClick={submit} disabled={saving} style={primaryBtn}>{saving ? 'Triggering...' : 'Trigger'}</button>
+          <button onClick={submit} disabled={saving || !canSubmit} style={primaryBtn}>{saving ? 'Triggering...' : 'Trigger'}</button>
         </div>
       </div>
     </div>
@@ -228,9 +271,72 @@ function TriggerModal({ processes, robots, onCancel, onSave }: { processes: impo
 type FormValues = {
   processId?: number;
   robotId?: number;
-  parameters?: Record<string, unknown>;
-  parametersText?: string;
+  parameters?: null;
 };
+
+type SelectOption = { label: string; value: string };
+
+function SearchableSelect({ options, value, onChange, placeholder, disabled }: { options: SelectOption[]; value?: string; onChange: (v?: string) => void; placeholder?: string; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState('');
+
+  const filtered = useMemo(() => {
+    const f = filter.toLowerCase();
+    return options.filter((o) => o.label.toLowerCase().includes(f));
+  }, [options, filter]);
+
+  const selectedLabel = options.find((o) => o.value === value)?.label;
+
+  function select(val: string) {
+    onChange(val);
+    setOpen(false);
+    setFilter('');
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        style={{
+          ...input,
+          textAlign: 'left',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          color: selectedLabel ? '#111827' : '#6b7280',
+        }}
+      >
+        {selectedLabel || placeholder || 'Select'}
+      </button>
+      {open && !disabled && (
+        <div style={{ position: 'absolute', zIndex: 20, marginTop: 6, width: '100%', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,0.08)', maxHeight: 260, overflow: 'hidden' }}>
+          <div style={{ padding: 8 }}>
+            <input
+              autoFocus
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Search…"
+              style={{ ...input, width: '100%' }}
+            />
+          </div>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {filtered.length === 0 && <div style={{ padding: 10, color: '#6b7280', fontSize: 13 }}>No matches</div>}
+            {filtered.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => select(o.value)}
+                style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: o.value === value ? '#eff6ff' : '#fff', border: 'none', borderTop: '1px solid #f3f4f6', cursor: 'pointer' }}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', width: '100%', maxWidth: '100%', boxSizing: 'border-box' };
 const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBottom: 6 };

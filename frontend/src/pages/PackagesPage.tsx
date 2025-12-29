@@ -1,13 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ChangeEvent } from "react";
 import type { Package } from "../types/package";
+import type { Job } from "../types/job";
 import { fetchPackages, uploadPackage, deletePackage } from "../api/packages";
+import { fetchJobs } from "../api/jobs";
 
 export default function PackagesPage() {
-  const [items, setItems] = useState<Package[]>([]);
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [versionsModal, setVersionsModal] = useState<string | null>(null); // package name
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -19,8 +25,12 @@ export default function PackagesPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchPackages(s ? { search: s } : undefined);
-      setItems(data);
+      const [pkgData, jobData] = await Promise.all([
+        fetchPackages(s ? { search: s } : undefined),
+        fetchJobs(),
+      ]);
+      setPackages(pkgData);
+      setJobs(jobData);
     } catch (e: any) {
       setError(e.message || "Failed to load packages");
     } finally {
@@ -28,26 +38,127 @@ export default function PackagesPage() {
     }
   }
 
-  function openUpload() { setModalOpen(true); }
-  function closeModal() { setModalOpen(false); }
+  function openUpload() { setUploadOpen(true); }
+  function closeUpload() { setUploadOpen(false); }
+
+  function openVersions(name: string) {
+    setVersionsModal(name);
+    setSelectedIds(new Set());
+  }
+  function closeVersions() {
+    setVersionsModal(null);
+    setSelectedIds(new Set());
+  }
 
   async function handleUpload(values: UploadValues) {
     try {
       await uploadPackage(values.file!);
-      closeModal();
+      closeUpload();
       await load(search);
     } catch (e: any) {
       alert(e.message || "Upload failed");
     }
   }
 
-  async function handleDelete(id: number) {
-    if (!confirm("Delete this package?")) return;
+  const grouped = useMemo(() => {
+    const byName: Record<string, Package[]> = {};
+    packages.forEach(p => {
+      byName[p.name] = byName[p.name] || [];
+      byName[p.name].push(p);
+    });
+    return Object.entries(byName).map(([name, versions]) => {
+      const latest = versions.reduce((acc, cur) => new Date(cur.updatedAt) > new Date(acc.updatedAt) ? cur : acc, versions[0]);
+      const isBv = versions.some(v => v.isBvpackage);
+      return {
+        name,
+        typeLabel: isBv ? "BV Package" : "Legacy ZIP",
+        totalVersions: versions.length,
+        updatedAt: latest.updatedAt,
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [packages]);
+
+  function versionsFor(name: string | null): Package[] {
+    if (!name) return [];
+    return packages.filter(p => p.name === name).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
+
+  function isActiveVersion(p: Package): boolean {
+    return jobs.some(j =>
+      (j.packageName === p.name && j.packageVersion === p.version) ||
+      (j.packageId === p.id && j.packageVersion === p.version)
+    );
+  }
+
+  function toggleSelect(id: number, active: boolean) {
+    if (active) return; // never allow selecting active versions
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function deleteSingle(p: Package, active: boolean) {
+    if (active) { alert("Cannot delete an active version"); return; }
+    if (!confirm(`Delete version ${p.version} of ${p.name}?`)) return;
     try {
-      await deletePackage(id);
+      await deletePackage(p.id);
       await load(search);
     } catch (e: any) {
       alert(e.message || "Delete failed");
+    }
+  }
+
+  async function bulkDelete(name: string) {
+    const versions = versionsFor(name);
+    const inactive = versions.filter(v => !isActiveVersion(v) && selectedIds.has(v.id));
+    if (inactive.length === 0) {
+      if (selectedIds.size > 0) {
+        alert("Selected versions are active and cannot be deleted.");
+      } else {
+        alert("Select at least one inactive version to delete.");
+      }
+      return;
+    }
+    if (!confirm(`Delete ${inactive.length} inactive version(s)?`)) return;
+    let hadError = false;
+    for (const v of inactive) {
+      try {
+        await deletePackage(v.id);
+      } catch (e: any) {
+        hadError = true;
+        alert(e.message || `Failed to delete ${v.version}`);
+      }
+    }
+    setSelectedIds(new Set());
+    await load(search);
+    if (hadError) {
+      alert("Some versions could not be deleted.");
+    }
+  }
+
+  async function deleteAllInactive(name: string) {
+    const versions = versionsFor(name);
+    const inactive = versions.filter(v => !isActiveVersion(v));
+    if (inactive.length === 0) {
+      alert("No inactive versions to delete.");
+      return;
+    }
+    if (!confirm(`Delete all ${inactive.length} inactive version(s)?`)) return;
+    let hadError = false;
+    for (const v of inactive) {
+      try {
+        await deletePackage(v.id);
+      } catch (e: any) {
+        hadError = true;
+        alert(e.message || `Failed to delete ${v.version}`);
+      }
+    }
+    setSelectedIds(new Set());
+    await load(search);
+    if (hadError) {
+      alert("Some versions could not be deleted.");
     }
   }
 
@@ -67,61 +178,143 @@ export default function PackagesPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
-                <th style={{ paddingBottom: 8 }}>Name</th>
-                <th style={{ paddingBottom: 8 }}>Version</th>
+                <th style={{ paddingBottom: 8 }}>Package Name</th>
                 <th style={{ paddingBottom: 8 }}>Type</th>
-                <th style={{ paddingBottom: 8 }}>Scripts / Entrypoints</th>
-                <th style={{ paddingBottom: 8 }}>Active</th>
+                <th style={{ paddingBottom: 8 }}>Total Versions</th>
                 <th style={{ paddingBottom: 8 }}>Updated</th>
                 <th style={{ paddingBottom: 8 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {items.map(p => (
-                <tr key={p.id} style={{ fontSize: 14, color: '#111827' }}>
-                  <td style={{ padding: '6px 0' }}>{p.name}</td>
-                  <td style={{ padding: '6px 0' }}>{p.version}</td>
-                  <td style={{ padding: '6px 0' }}>{p.isBvpackage ? 'BV Package' : 'Legacy ZIP'}</td>
-                  <td style={{ padding: '6px 0', maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {p.isBvpackage ? (
-                      <>
-                        {(p.entrypoints || []).length === 0 ? (
-                          <span style={{ color: '#6b7280' }}>(no entrypoints)</span>
-                        ) : (
-                          (p.entrypoints || []).map((ep, idx) => (
-                            <span key={ep.name}>
-                              {idx > 0 ? ', ' : ''}
-                              {ep.name === p.defaultEntrypoint ? (
-                                <span style={{ fontWeight: 700 }}>{ep.name} (default)</span>
-                              ) : (
-                                <span>{ep.name}</span>
-                              )}
-                            </span>
-                          ))
-                        )}
-                      </>
-                    ) : (
-                      p.scripts.join(', ')
-                    )}
-                  </td>
-                  <td style={{ padding: '6px 0' }}>{p.isActive ? 'Yes' : 'No'}</td>
-                  <td style={{ padding: '6px 0' }}>{new Date(p.updatedAt).toLocaleString()}</td>
+              {grouped.map(row => (
+                <tr key={row.name} style={{ fontSize: 14, color: '#111827' }}>
+                  <td style={{ padding: '6px 0' }}>{row.name}</td>
+                  <td style={{ padding: '6px 0' }}>{row.typeLabel}</td>
+                  <td style={{ padding: '6px 0' }}>{row.totalVersions}</td>
+                  <td style={{ padding: '6px 0' }}>{new Date(row.updatedAt).toLocaleString()}</td>
                   <td style={{ padding: '6px 0' }}>
-                    <button style={dangerBtn} onClick={()=>handleDelete(p.id)}>Delete</button>
+                    <button style={primaryBtn} onClick={()=>openVersions(row.name)}>View Versions</button>
                   </td>
                 </tr>
               ))}
-              {items.length === 0 && (
-                <tr><td colSpan={7} style={{ paddingTop: 12, color: '#6b7280' }}>No packages found</td></tr>
+              {grouped.length === 0 && (
+                <tr><td colSpan={5} style={{ paddingTop: 12, color: '#6b7280' }}>No packages found</td></tr>
               )}
             </tbody>
           </table>
         )}
       </div>
 
-      {modalOpen && (
-        <UploadModal onCancel={closeModal} onSave={handleUpload} />
+      {uploadOpen && (
+        <UploadModal onCancel={closeUpload} onSave={handleUpload} />
       )}
+
+      {versionsModal && (
+        <VersionsModal
+          packageName={versionsModal}
+          versions={versionsFor(versionsModal)}
+          isActive={isActiveVersion}
+          onClose={closeVersions}
+          onDelete={deleteSingle}
+          selectedIds={selectedIds}
+          onToggle={toggleSelect}
+          onBulkDelete={bulkDelete}
+          onDeleteInactive={deleteAllInactive}
+        />
+      )}
+    </div>
+  );
+}
+
+function VersionsModal({
+  packageName,
+  versions,
+  isActive,
+  onClose,
+  onDelete,
+  selectedIds,
+  onToggle,
+  onBulkDelete,
+  onDeleteInactive,
+}: {
+  packageName: string;
+  versions: Package[];
+  isActive: (p: Package) => boolean;
+  onClose: () => void;
+  onDelete: (p: Package, active: boolean) => Promise<void>;
+  selectedIds: Set<number>;
+  onToggle: (id: number, active: boolean) => void;
+  onBulkDelete: (name: string) => Promise<void>;
+  onDeleteInactive: (name: string) => Promise<void>;
+}) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center', zIndex: 20 }}>
+      <div style={{ width: '100%', maxWidth: 900, background: '#fff', borderRadius: 16, boxShadow: '0 12px 30px rgba(0,0,0,0.18)', padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Versions for {packageName}</h2>
+            <div style={{ color: '#6b7280', fontSize: 13 }}>Manage versions. Active versions cannot be deleted.</div>
+          </div>
+          <button onClick={onClose} style={{ ...secondaryBtn, padding: '8px 12px' }}>Close</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button style={primaryBtn} onClick={()=>onBulkDelete(packageName)}>Bulk Delete Selected</button>
+          <button style={dangerBtn} onClick={()=>onDeleteInactive(packageName)}>Delete All Inactive Versions</button>
+          <div style={{ color: '#6b7280', fontSize: 12 }}>
+            Active versions are detected from Jobs that reference the same package name + version.
+          </div>
+        </div>
+
+        <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
+                <th style={{ paddingBottom: 8 }}></th>
+                <th style={{ paddingBottom: 8 }}>Version</th>
+                <th style={{ paddingBottom: 8 }}>Active</th>
+                <th style={{ paddingBottom: 8 }}>Updated</th>
+                <th style={{ paddingBottom: 8 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {versions.map(v => {
+                const active = isActive(v);
+                const disabled = active;
+                return (
+                  <tr key={v.id} style={{ fontSize: 14, color: '#111827' }}>
+                    <td style={{ padding: '6px 0', width: 36 }}>
+                      <input
+                        type="checkbox"
+                        disabled={disabled}
+                        checked={selectedIds.has(v.id) && !disabled}
+                        onChange={()=>onToggle(v.id, active)}
+                      />
+                    </td>
+                    <td style={{ padding: '6px 0' }}>{v.version}</td>
+                    <td style={{ padding: '6px 0', color: active ? '#2563eb' : '#059669', fontWeight: 600 }}>
+                      {active ? 'Yes' : 'No'}
+                    </td>
+                    <td style={{ padding: '6px 0' }}>{new Date(v.updatedAt).toLocaleString()}</td>
+                    <td style={{ padding: '6px 0' }}>
+                      <button
+                        style={{ ...dangerBtn, opacity: disabled ? 0.5 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}
+                        onClick={()=>onDelete(v, active)}
+                        disabled={disabled}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {versions.length === 0 && (
+                <tr><td colSpan={5} style={{ paddingTop: 12, color: '#6b7280' }}>No versions found</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -130,7 +323,7 @@ function UploadModal({ onCancel, onSave }: { onCancel: ()=>void; onSave:(v:Uploa
   const [form, setForm] = useState<UploadValues>({ file: null });
   const [saving, setSaving] = useState(false);
 
-  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function onFile(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
     setForm(prev => ({ ...prev, file: f }));
   }

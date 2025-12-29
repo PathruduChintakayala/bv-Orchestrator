@@ -1,4 +1,14 @@
+import { useEffect } from 'react'
+import { useAuth } from '../auth'
+
 export default function LoggedOutPage() {
+  const { logout } = useAuth()
+
+  useEffect(() => {
+    logout()
+    sessionStorage.removeItem('bv_return_to')
+  }, [logout])
+
   function goLogin() { window.location.hash = '#/'; }
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', backgroundColor: '#f3f4f6', padding: 24 }}>

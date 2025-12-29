@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { useAuth } from '../auth'
 
 export default function Login() {
+  const { setAuthenticatedSession } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -26,16 +28,15 @@ export default function Login() {
         throw new Error(text || 'Login failed')
       }
       const data = await res.json()
-      localStorage.setItem('token', data.access_token)
-      // hydrate current user + permissions
+      let me: any | null = null
       try {
         const meRes = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${data.access_token}` } })
         if (meRes.ok) {
-          const me = await meRes.json()
-          localStorage.setItem('currentUser', JSON.stringify(me.user))
-          localStorage.setItem('permissions', JSON.stringify(me.permissions.flat))
+          me = await meRes.json()
         }
       } catch {}
+
+      setAuthenticatedSession(data.access_token, me || undefined)
 
       const returnTo = sessionStorage.getItem('bv_return_to')
       sessionStorage.removeItem('bv_return_to')

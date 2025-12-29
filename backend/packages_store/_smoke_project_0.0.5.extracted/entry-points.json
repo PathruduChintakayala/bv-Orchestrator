@@ -1,0 +1,9 @@
+{
+  "entrypoints": [
+    {
+      "name": "main",
+      "module": "main",
+      "function": "main"
+    }
+  ]
+}
