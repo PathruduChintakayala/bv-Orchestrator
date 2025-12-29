@@ -11,6 +11,7 @@ export default function QueueItemsPage() {
   const [status, setStatus] = useState<QueueItemStatus | ''>('')
   const [modalOpen, setModalOpen] = useState(false)
   const [queues, setQueues] = useState<import('../types/queue').Queue[]>([])
+  const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null)
 
   useEffect(() => {
     const hash = window.location.hash || '#/queue-items'
@@ -91,6 +92,7 @@ export default function QueueItemsPage() {
                   <td style={{ padding: '6px 0' }}>{it.retries}</td>
                   <td style={{ padding: '6px 0' }}>{new Date(it.createdAt).toLocaleString()}</td>
                   <td style={{ padding: '6px 0' }}>
+                    <button style={secondaryBtn} onClick={()=>setSelectedItem(it)}>View Details</button>{' '}
                     <button style={secondaryBtn} onClick={()=>markStatus(it.id, 'completed')}>Mark Completed</button>{' '}
                     <button style={dangerBtn} onClick={()=>markStatus(it.id, 'failed')}>Mark Failed</button>
                   </td>
@@ -106,6 +108,10 @@ export default function QueueItemsPage() {
 
       {modalOpen && (
         <NewItemModal defaultQueueId={queueId ?? undefined} queues={queues} onCancel={closeModal} onSave={handleCreate} />
+      )}
+
+      {selectedItem && (
+        <DetailsModal item={selectedItem} queueName={queues.find(q => q.id === selectedItem.queueId)?.name ?? 'Unknown'} onClose={() => setSelectedItem(null)} />
       )}
     </div>
   )
@@ -161,6 +167,33 @@ function NewItemModal({ defaultQueueId, queues, onCancel, onSave }: { defaultQue
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
           <button onClick={submit} disabled={saving} style={primaryBtn}>{saving ? 'Creating...' : 'Create'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DetailsModal({ item, queueName, onClose }: { item: QueueItem; queueName: string; onClose: () => void }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
+      <div style={{ width: '100%', maxWidth: 800, background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '80vh', overflow: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>
+            {queueName} – Item {item.id} ({item.status})
+          </h2>
+          <button onClick={onClose} style={{ ...secondaryBtn, padding: '6px 10px' }}>×</button>
+        </div>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div><strong>Item ID:</strong> {item.id}</div>
+          <div><strong>Status:</strong> {item.status}</div>
+          <div><strong>Created At:</strong> {new Date(item.createdAt).toLocaleString()}</div>
+          <div><strong>Updated At:</strong> {item.updatedAt ? new Date(item.updatedAt).toLocaleString() : 'N/A'}</div>
+          <div>
+            <strong>Payload:</strong>
+            <pre style={{ background: '#f3f4f6', padding: 12, borderRadius: 8, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', wordWrap: 'break-word', maxHeight: 300, overflow: 'auto' }}>
+              {item.payload ? JSON.stringify(item.payload, null, 2) : 'No payload'}
+            </pre>
+          </div>
         </div>
       </div>
     </div>
