@@ -1,22 +1,34 @@
 import { useEffect, useState } from 'react'
 import type { Queue } from '../types/queue'
 import { fetchQueues, createQueue, updateQueue, deleteQueue } from '../api/queues'
+import { fetchQueueItems } from '../api/queueItems'
 
 export default function QueuesPage() {
   const [items, setItems] = useState<Queue[]>([])
+  const [queueItems, setQueueItems] = useState<import('../types/queueItem').QueueItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Queue | null>(null)
+  const [selectedQueue, setSelectedQueue] = useState<Queue | null>(null)
+  const [hasTrigger, setHasTrigger] = useState(false)
+  const [labels, setLabels] = useState('')
+  const [properties, setProperties] = useState('')
+  const [completedItems, setCompletedItems] = useState(false)
+  const [uncompletedItems, setUncompletedItems] = useState(false)
 
   useEffect(() => { load() }, [])
 
   async function load() {
     try {
       setLoading(true); setError(null)
-      const data = await fetchQueues(search ? { search } : undefined)
-      setItems(data)
+      const [queuesData, itemsData] = await Promise.all([
+        fetchQueues(search ? { search } : undefined),
+        fetchQueueItems()
+      ])
+      setItems(queuesData)
+      setQueueItems(itemsData)
     } catch (e: any) {
       setError(e.message || 'Failed to load queues')
     } finally { setLoading(false) }
@@ -42,6 +54,32 @@ export default function QueuesPage() {
     try { await deleteQueue(id); await load() } catch (e: any) { alert(e.message || 'Delete failed') }
   }
 
+  function getQueueMetrics(queueId: number) {
+    const items = queueItems.filter(i => i.queueId === queueId)
+    const inProgress = items.filter(i => i.status === 'in_progress').length
+    const remaining = items.filter(i => i.status === 'new' || i.status === 'in_progress').length
+    const successful = items.filter(i => i.status === 'completed').length
+    const appExceptions = items.filter(i => i.status === 'failed').length
+    const bizExceptions = 0 // not distinguished
+    const completedItemsList = items.filter(i => i.status === 'completed')
+    let avgProcessingTime = 0
+    if (completedItemsList.length > 0) {
+      const totalTime = completedItemsList.reduce((sum, i) => {
+        const start = new Date(i.createdAt).getTime()
+        const end = new Date(i.updatedAt || i.createdAt).getTime()
+        return sum + (end - start)
+      }, 0)
+      avgProcessingTime = totalTime / completedItemsList.length / 1000 // seconds
+    }
+    return { inProgress, remaining, avgProcessingTime, successful, appExceptions, bizExceptions }
+  }
+
+  function formatTime(seconds: number): string {
+    if (seconds < 60) return `${Math.round(seconds)} s`
+    const minutes = seconds / 60
+    return `${minutes.toFixed(1)} min`
+  }
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -49,8 +87,31 @@ export default function QueuesPage() {
         <div style={{ display: 'flex', gap: 8 }}>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder='Search queues...' style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
           <button onClick={load} style={secondaryBtn}>Search</button>
-          <button onClick={openNew} style={primaryBtn}>New Queue</button>
+          <button onClick={openNew} style={primaryBtn}>+ Add Queue</button>
         </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input type="checkbox" checked={hasTrigger} onChange={e=>setHasTrigger(e.target.checked)} />
+          Has Trigger
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span>Labels:</span>
+          <input value={labels} onChange={e=>setLabels(e.target.value)} placeholder='Filter labels...' style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #e5e7eb', width: 120 }} />
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span>Properties:</span>
+          <input value={properties} onChange={e=>setProperties(e.target.value)} placeholder='Filter properties...' style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #e5e7eb', width: 120 }} />
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input type="checkbox" checked={completedItems} onChange={e=>setCompletedItems(e.target.checked)} />
+          Completed queue items
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input type="checkbox" checked={uncompletedItems} onChange={e=>setUncompletedItems(e.target.checked)} />
+          Uncompleted queue items
+        </label>
       </div>
 
       <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
@@ -59,28 +120,62 @@ export default function QueuesPage() {
             <thead>
               <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
                 <th style={{ paddingBottom: 8 }}>Name</th>
-                <th style={{ paddingBottom: 8 }}>Active</th>
-                <th style={{ paddingBottom: 8 }}>Max retries</th>
-                <th style={{ paddingBottom: 8 }}>Created</th>
+                <th style={{ paddingBottom: 8, textAlign: 'right' }}>In Progress</th>
+                <th style={{ paddingBottom: 8, textAlign: 'right' }}>Remaining</th>
+                <th style={{ paddingBottom: 8, textAlign: 'right' }}>Average Processing Time</th>
+                <th style={{ paddingBottom: 8, textAlign: 'right' }}>Successful</th>
+                <th style={{ paddingBottom: 8, textAlign: 'right' }}>App Exceptions</th>
+                <th style={{ paddingBottom: 8, textAlign: 'right' }}>Biz Exceptions</th>
+                <th style={{ paddingBottom: 8 }}>Process</th>
+                <th style={{ paddingBottom: 8 }}>Labels</th>
+                <th style={{ paddingBottom: 8 }}>Properties</th>
                 <th style={{ paddingBottom: 8 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {items.map(q => (
-                <tr key={q.id} style={{ fontSize: 14, color: '#111827' }}>
-                  <td style={{ padding: '6px 0' }}>{q.name}</td>
-                  <td style={{ padding: '6px 0' }}>{q.isActive ? 'Yes' : 'No'}</td>
-                  <td style={{ padding: '6px 0' }}>{q.maxRetries}</td>
-                  <td style={{ padding: '6px 0' }}>{new Date(q.createdAt).toLocaleString()}</td>
-                  <td style={{ padding: '6px 0' }}>
-                    <button style={secondaryBtn} onClick={()=>window.location.hash = `#/queue-items?queueId=${q.id}`}>View Items</button>{' '}
-                    <button style={secondaryBtn} onClick={()=>openEdit(q)}>Edit</button>{' '}
-                    <button style={dangerBtn} onClick={()=>handleDelete(q.id)}>Delete</button>
-                  </td>
-                </tr>
-              ))}
+              {items.map(q => {
+                const metrics = getQueueMetrics(q.id)
+                return (
+                  <tr key={q.id} style={{ fontSize: 14, color: '#111827' }}>
+                    <td style={{ padding: '6px 0' }}>
+                      <a href={`#/queue-items?queueId=${q.id}`} style={{ color: '#2563eb', textDecoration: 'none' }}>{q.name}</a>
+                    </td>
+                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.inProgress}</td>
+                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.remaining}</td>
+                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{formatTime(metrics.avgProcessingTime)}</td>
+                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.successful}</td>
+                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.appExceptions}</td>
+                    <td style={{ padding: '6px 0', textAlign: 'right' }}>{metrics.bizExceptions}</td>
+                    <td style={{ padding: '6px 0' }}>-</td>
+                    <td style={{ padding: '6px 0' }} title={''}>-</td>
+                    <td style={{ padding: '6px 0' }} title={q.description || ''}>{(q.description || '').slice(0, 20)}{(q.description || '').length > 20 ? '...' : ''}</td>
+                    <td style={{ padding: '6px 0' }}>
+                      <select style={{ border: 'none', background: 'none', cursor: 'pointer' }} onChange={e => {
+                        const action = e.target.value
+                        if (action === 'view-items') window.location.hash = `#/queue-items?queueId=${q.id}`
+                        else if (action === 'view-details') setSelectedQueue(q)
+                        else if (action === 'edit') openEdit(q)
+                        else if (action === 'delete') handleDelete(q.id)
+                        e.target.value = ''
+                      }}>
+                        <option value=''>⋮</option>
+                        <option value='view-items'>View Queue Items</option>
+                        <option value='view-details'>View Details</option>
+                        <option value='edit'>Edit Queue</option>
+                        <option value='delete'>Delete Queue</option>
+                      </select>
+                    </td>
+                  </tr>
+                )
+              })}
               {items.length === 0 && (
-                <tr><td colSpan={5} style={{ paddingTop: 12, color: '#6b7280' }}>No queues found</td></tr>
+                <tr><td colSpan={11} style={{ paddingTop: 12, color: '#6b7280', textAlign: 'center' }}>
+                  <div style={{ padding: 32 }}>
+                    <p style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No queues found</p>
+                    <p>Queues are used to manage and process items asynchronously. Create your first queue to get started.</p>
+                    <button onClick={openNew} style={{ ...primaryBtn, marginTop: 16 }}>Add Queue</button>
+                  </div>
+                </td></tr>
               )}
             </tbody>
           </table>
@@ -90,6 +185,31 @@ export default function QueuesPage() {
       {modalOpen && (
         <QueueModal initial={editing} onCancel={closeModal} onSave={handleSave} />
       )}
+
+      {selectedQueue && (
+        <DetailsModal queue={selectedQueue} onClose={() => setSelectedQueue(null)} />
+      )}
+    </div>
+  )
+}
+
+function DetailsModal({ queue, onClose }: { queue: Queue; onClose: () => void }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
+      <div style={{ width: '100%', maxWidth: 600, background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>Queue Details</h2>
+          <button onClick={onClose} style={{ ...secondaryBtn, padding: '6px 10px' }}>×</button>
+        </div>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div><strong>Name:</strong> {queue.name}</div>
+          <div><strong>Description:</strong> {queue.description || 'No description'}</div>
+          <div><strong>Active:</strong> {queue.isActive ? 'Yes' : 'No'}</div>
+          <div><strong>Max Retries:</strong> {queue.maxRetries}</div>
+          <div><strong>Created At:</strong> {new Date(queue.createdAt).toLocaleString()}</div>
+          <div><strong>Updated At:</strong> {new Date(queue.updatedAt).toLocaleString()}</div>
+        </div>
+      </div>
     </div>
   )
 }
