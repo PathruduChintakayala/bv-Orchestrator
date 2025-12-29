@@ -72,11 +72,6 @@ export default function QueueItemsPage() {
     }
   }
 
-  async function softDelete(id: string) {
-    if (!confirm('Soft delete this item? It will be marked as deleted and cannot be modified.')) return
-    try { await updateQueueItem(id, { status: 'deleted' }); await load() } catch (e: any) { alert(e.message || 'Delete failed') }
-  }
-
   function toggleSelect(id: string) {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
@@ -136,6 +131,7 @@ export default function QueueItemsPage() {
             <option value=''>All statuses</option>
             {(['new','in_progress','completed','failed','deleted'] as QueueItemStatus[]).map(s=> <option key={s} value={s}>{s}</option>)}
           </select>
+          <button onClick={load} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
           <button onClick={openNew} style={primaryBtn}>New Item</button>
         </div>
       </div>
@@ -150,34 +146,33 @@ export default function QueueItemsPage() {
         {loading ? <p>Loading...</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
-                <th style={{ paddingBottom: 8, width: 40 }}>
+              <tr>
+                <th style={{ width: 40 }}>
                   <input type="checkbox" checked={selected.length === items.filter(it => it.status !== 'deleted').length && items.filter(it => it.status !== 'deleted').length > 0} onChange={toggleSelectAll} ref={(el) => {
                     if (el) el.indeterminate = selected.length > 0 && selected.length < items.filter(it => it.status !== 'deleted').length
                   }} />
                 </th>
-                <th style={{ paddingBottom: 8 }}>Reference</th>
-                <th style={{ paddingBottom: 8 }}>Status</th>
-                <th style={{ paddingBottom: 8 }}>Priority</th>
-                <th style={{ paddingBottom: 8 }}>Retries</th>
-                <th style={{ paddingBottom: 8 }}>Created</th>
-                <th style={{ paddingBottom: 8 }}>Actions</th>
+                <th>Reference</th>
+                <th>Status</th>
+                <th data-align="right">Priority</th>
+                <th data-align="right">Retries</th>
+                <th>Created</th>
+                <th data-type="actions">Actions</th>
               </tr>
             </thead>
             <tbody>
               {items.map(it => (
-                <tr key={it.id} style={{ fontSize: 14, color: '#111827' }}>
-                  <td style={{ padding: '6px 0' }}>
+                <tr key={it.id}>
+                  <td>
                     <input type="checkbox" checked={selected.includes(it.id)} onChange={() => toggleSelect(it.id)} disabled={it.status === 'deleted'} />
                   </td>
-                  <td style={{ padding: '6px 0' }}>{it.reference ?? '-'}</td>
-                  <td style={{ padding: '6px 0' }}><StatusBadge status={it.status} /></td>
-                  <td style={{ padding: '6px 0' }}>{it.priority}</td>
-                  <td style={{ padding: '6px 0' }}>{it.retries}</td>
-                  <td style={{ padding: '6px 0' }}>{new Date(it.createdAt).toLocaleString()}</td>
-                  <td style={{ padding: '6px 0' }}>
-                    <button style={secondaryBtn} onClick={()=>setSelectedItem(it)}>View Details</button>{' '}
-                    {it.status !== 'deleted' && <button style={dangerBtn} onClick={()=>softDelete(it.id)}>Delete Item</button>}
+                  <td>{it.reference ?? '-'}</td>
+                  <td><StatusBadge status={it.status} /></td>
+                  <td data-align="right">{it.priority}</td>
+                  <td data-align="right">{it.retries}</td>
+                  <td>{new Date(it.createdAt).toLocaleString()}</td>
+                  <td data-type="actions">
+                    <button style={secondaryBtn} onClick={()=>setSelectedItem(it)}>View Details</button>
                   </td>
                 </tr>
               ))}

@@ -94,6 +94,7 @@ export default function JobsPage() {
             {(['pending','running','completed','failed','canceled'] as JobStatus[]).map(s=> <option key={s} value={s}>{s}</option>)}
           </select>
           <button onClick={load} style={secondaryBtn}>Apply</button>
+          <button onClick={load} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
           <button onClick={openNew} style={primaryBtn}>Trigger Job</button>
         </div>
       </div>
@@ -103,20 +104,20 @@ export default function JobsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
-                <th style={{ paddingBottom: 8 }}>ID</th>
+                <th data-align="right" style={{ paddingBottom: 8 }}>ID</th>
                 <th style={{ paddingBottom: 8 }}>Process</th>
                 <th style={{ paddingBottom: 8 }}>Package</th>
                 <th style={{ paddingBottom: 8 }}>Robot</th>
                 <th style={{ paddingBottom: 8 }}>Status</th>
                 <th style={{ paddingBottom: 8 }}>Created</th>
                 <th style={{ paddingBottom: 8 }}>Duration</th>
-                <th style={{ paddingBottom: 8 }}>Actions</th>
+                <th data-type="actions" style={{ paddingBottom: 8 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {items.map(j => (
                 <tr key={j.id} style={{ fontSize: 14, color: '#111827' }}>
-                  <td style={{ padding: '6px 0' }}>{j.id}</td>
+                  <td data-align="right" style={{ padding: '6px 0' }}>{j.id}</td>
                   <td style={{ padding: '6px 0' }}>{j.process?.name ?? j.processId}</td>
                   <td style={{ padding: '6px 0' }}>
                     {(() => {
@@ -138,7 +139,7 @@ export default function JobsPage() {
                   <td style={{ padding: '6px 0' }}>{j.status}</td>
                   <td style={{ padding: '6px 0' }}>{new Date(j.createdAt).toLocaleString()}</td>
                   <td style={{ padding: '6px 0' }}>{duration(j)}</td>
-                  <td style={{ padding: '6px 0' }}>
+                  <td data-type="actions" style={{ padding: '6px 0' }}>
                     {(j.status === 'pending' || j.status === 'running') && (
                       <button style={dangerBtn} onClick={()=>handleCancel(j.id)}>Cancel</button>
                     )}

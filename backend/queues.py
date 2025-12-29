@@ -161,10 +161,17 @@ def delete_queue(queue_id: int, request: Request, session: Session = Depends(get
     if not obj:
         raise HTTPException(status_code=404, detail="Queue not found")
     before = {"name": obj.name, "description": obj.description, "max_retries": obj.max_retries}
+    
+    # Delete all queue items associated with this queue (hard delete)
+    queue_items = session.exec(select(QueueItem).where(QueueItem.queue_id == queue_id)).all()
+    for item in queue_items:
+        session.delete(item)
+    
+    # Delete the queue itself
     session.delete(obj)
     session.commit()
     try:
-        log_event(session, action="queue.delete", entity_type="queue", entity_id=queue_id, entity_name=before.get("name"), before=before, after=None, metadata=None, request=request, user=user)
+        log_event(session, action="queue.delete", entity_type="queue", entity_id=queue_id, entity_name=before.get("name"), before=before, after=None, metadata={"deleted_queue_items_count": len(queue_items)}, request=request, user=user)
     except Exception:
         pass
     return None

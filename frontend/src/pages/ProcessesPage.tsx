@@ -83,6 +83,7 @@ export default function ProcessesPage() {
         <div style={{ display: 'flex', gap: 8 }}>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search processes…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
           <button onClick={()=>load(search)} style={secondaryBtn}>Search</button>
+          <button onClick={()=>load(search)} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
           <button onClick={openNew} style={primaryBtn}>New Process</button>
         </div>
       </div>
@@ -91,26 +92,26 @@ export default function ProcessesPage() {
         {loading ? <p>Loading…</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
-                <th style={{ paddingBottom: 8 }}>Name</th>
-                <th style={{ paddingBottom: 8 }}>Script</th>
-                <th style={{ paddingBottom: 8 }}>Active</th>
-                <th style={{ paddingBottom: 8 }}>Version</th>
-                <th style={{ paddingBottom: 8 }}>Updated</th>
-                <th style={{ paddingBottom: 8 }}>Actions</th>
+              <tr>
+                <th>Name</th>
+                <th>Script</th>
+                <th>Active</th>
+                <th data-align="right">Version</th>
+                <th>Updated</th>
+                <th data-type="actions">Actions</th>
               </tr>
             </thead>
             <tbody>
               {items.map(p => (
-                <tr key={p.id} style={{ fontSize: 14, color: '#111827' }}>
-                  <td style={{ padding: '6px 0' }}>{p.name}</td>
-                  <td style={{ padding: '6px 0', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <tr key={p.id}>
+                  <td>{p.name}</td>
+                  <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.package?.isBvpackage ? (p.entrypointName ? `Entrypoint: ${p.entrypointName}` : 'Entrypoint: (missing)') : p.scriptPath}
                   </td>
-                  <td style={{ padding: '6px 0' }}>{p.isActive ? 'Yes' : 'No'}</td>
-                  <td style={{ padding: '6px 0' }}>{p.version}</td>
-                  <td style={{ padding: '6px 0' }}>{new Date(p.updatedAt).toLocaleString()}</td>
-                  <td style={{ padding: '6px 0' }}>
+                  <td>{p.isActive ? 'Yes' : 'No'}</td>
+                  <td data-align="right">{p.version}</td>
+                  <td>{new Date(p.updatedAt).toLocaleString()}</td>
+                  <td data-type="actions">
                     <button style={secondaryBtn} onClick={()=>openEdit(p)}>Edit</button>{' '}
                     <button style={dangerBtn} onClick={()=>handleDelete(p.id)}>Delete</button>
                   </td>

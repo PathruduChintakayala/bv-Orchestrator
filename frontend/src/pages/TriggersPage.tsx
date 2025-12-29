@@ -246,7 +246,7 @@ export default function TriggersPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>Triggers</h1>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => void load()} style={secondaryBtn}>Refresh</button>
+          <button onClick={() => void load()} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
           <button onClick={() => { setForm(emptyForm); setModalOpen(true) }} style={primaryBtn}>New Trigger</button>
         </div>
       </div>
@@ -255,33 +255,33 @@ export default function TriggersPage() {
         {loading ? <p>Loading...</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
-                <th style={{ paddingBottom: 8 }}>Name</th>
-                <th style={{ paddingBottom: 8 }}>Type</th>
-                <th style={{ paddingBottom: 8 }}>Process</th>
-                <th style={{ paddingBottom: 8 }}>Schedule / Queue</th>
-                <th style={{ paddingBottom: 8 }}>Last fired</th>
-                <th style={{ paddingBottom: 8 }}>Next fire</th>
-                <th style={{ paddingBottom: 8 }}>Enabled</th>
-                <th style={{ paddingBottom: 8 }}>Actions</th>
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Process</th>
+                <th>Schedule / Queue</th>
+                <th>Last fired</th>
+                <th>Next fire</th>
+                <th>Enabled</th>
+                <th data-type="actions">Actions</th>
               </tr>
             </thead>
             <tbody>
               {items.map(t => (
-                <tr key={t.id} style={{ fontSize: 14, color: '#111827' }}>
-                  <td style={{ padding: '6px 0' }}>{t.name}</td>
-                  <td style={{ padding: '6px 0' }}>{t.type}</td>
-                  <td style={{ padding: '6px 0' }}>{processNameById.get(t.processId) || `Process ${t.processId}`}</td>
-                  <td style={{ padding: '6px 0' }}>
+                <tr key={t.id}>
+                  <td>{t.name}</td>
+                  <td>{t.type}</td>
+                  <td>{processNameById.get(t.processId) || `Process ${t.processId}`}</td>
+                  <td>
                     {t.type === 'TIME'
                       ? (t.cronExpression ? `${t.cronExpression} ${t.timezone || ''}`.trim() : '—')
                       : (t.queueId ? `${queueNameById.get(t.queueId) || `Queue ${t.queueId}`} (batch ${t.batchSize ?? 1}, every ${t.pollingInterval ?? 30}s)` : '—')
                     }
                   </td>
-                  <td style={{ padding: '6px 0' }}>{t.lastFiredAt ? new Date(t.lastFiredAt).toLocaleString() : '—'}</td>
-                  <td style={{ padding: '6px 0' }}>{t.nextFireAt ? new Date(t.nextFireAt).toLocaleString() : '—'}</td>
-                  <td style={{ padding: '6px 0' }}>{t.enabled ? 'Yes' : 'No'}</td>
-                  <td style={{ padding: '6px 0' }}>
+                  <td>{t.lastFiredAt ? new Date(t.lastFiredAt).toLocaleString() : '—'}</td>
+                  <td>{t.nextFireAt ? new Date(t.nextFireAt).toLocaleString() : '—'}</td>
+                  <td>{t.enabled ? 'Yes' : 'No'}</td>
+                  <td data-type="actions">
                     <button
                       onClick={() => void toggleTrigger(t, !t.enabled)}
                       disabled={toggling === t.id}
