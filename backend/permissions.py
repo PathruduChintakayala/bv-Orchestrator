@@ -2,9 +2,9 @@ from fastapi import Depends, HTTPException
 from sqlmodel import Session, select
 from typing import Literal, Dict
 
-from .db import get_session
-from .auth import get_current_user
-from .models import RolePermission, UserRole, User
+from backend.db import get_session
+from backend.auth import get_current_user
+from backend.models import RolePermission, UserRole, User
 
 Operation = Literal["view", "create", "edit", "delete"]
 

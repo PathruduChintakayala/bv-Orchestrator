@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import select
 from passlib.context import CryptContext
 
-from .db import get_session
-from .auth import get_current_user
-from .models import Asset
-from .permissions import require_permission
-from .audit_utils import log_event, diff_dicts
+from backend.db import get_session
+from backend.auth import get_current_user
+from backend.models import Asset
+from backend.permissions import require_permission
+from backend.audit_utils import log_event, diff_dicts
 
 router = APIRouter(prefix="/assets", tags=["assets"]) 
 

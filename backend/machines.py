@@ -6,11 +6,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session, select
 
-from .auth import get_current_user
-from .db import get_session
-from .models import Machine, Robot
-from .audit_utils import log_event
-from .permissions import require_permission
+from backend.auth import get_current_user
+from backend.db import get_session
+from backend.models import Machine, Robot
+from backend.audit_utils import log_event
+from backend.permissions import require_permission
 
 router = APIRouter(prefix="/machines", tags=["machines"])  # mounted under /api
 

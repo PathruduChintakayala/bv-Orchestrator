@@ -30,7 +30,7 @@ def _on_checkin(dbapi_con, con_record):
 
 def init_db():
     # Ensure models are imported so SQLModel is aware of all tables
-    from .models import (
+    from backend.models import (
         User,
         Robot,
         Machine,
@@ -267,7 +267,7 @@ def init_db():
 
         # Backfill execution_id for existing jobs (best-effort)
         try:
-            from .models import Job  # noqa: WPS433
+            from backend.models import Job  # noqa: WPS433
             with Session(engine) as session:
                 missing = session.exec(select(Job).where((Job.execution_id == None) | (Job.execution_id == ""))).all()  # noqa: E711
                 if missing:

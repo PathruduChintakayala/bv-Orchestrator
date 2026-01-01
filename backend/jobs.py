@@ -5,11 +5,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import select
 
-from .db import get_session
-from .auth import get_current_user
-from .models import Job, Process, Robot, Package, QueueItem
-from .audit_utils import log_event
-from .permissions import require_permission
+from backend.db import get_session
+from backend.auth import get_current_user
+from backend.models import Job, Process, Robot, Package, QueueItem
+from backend.audit_utils import log_event
+from backend.permissions import require_permission
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 

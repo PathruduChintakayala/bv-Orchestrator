@@ -8,8 +8,8 @@ from typing import Optional, List
 from croniter import croniter
 from sqlmodel import Session, select
 
-from .db import engine
-from .models import Trigger, TriggerType, Process, Package, Job, JobExecutionLog, QueueItem
+from backend.db import engine
+from backend.models import Trigger, TriggerType, Process, Package, Job, JobExecutionLog, QueueItem
 
 log = logging.getLogger("trigger.scheduler")
 

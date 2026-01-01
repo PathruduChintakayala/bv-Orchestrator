@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 
-from .auth import get_current_user
-from .db import get_session
-from .models import Job, JobExecutionLog, Robot
-from .permissions import require_permission
-from .robot_dependencies import get_current_robot
+from backend.auth import get_current_user
+from backend.db import get_session
+from backend.models import Job, JobExecutionLog, Robot
+from backend.permissions import require_permission
+from backend.robot_dependencies import get_current_robot
 
 router = APIRouter(prefix="/job-executions", tags=["job-executions"])
 

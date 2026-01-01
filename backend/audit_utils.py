@@ -4,7 +4,7 @@ import json
 from fastapi import Request
 from sqlmodel import Session
 
-from .models import AuditEvent, User
+from backend.models import AuditEvent, User
 
 
 REDACT_KEYS = {

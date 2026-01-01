@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from hashlib import sha256
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,9 +10,9 @@ from jose import jwt
 from passlib.context import CryptContext
 from sqlmodel import Session, select
 
-from .db import get_session
-from .models import User, Role, UserRole, RolePermission
-from .audit_utils import log_event
+from backend.db import get_session
+from backend.models import User, Role, UserRole, RolePermission
+from backend.audit_utils import log_event
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -19,12 +20,41 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SECRET_KEY = "dev-secret-change-me"  # for demo; move to env
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480
+_BCRYPT_MAX_INPUT_BYTES = 72
+
+
+def _prepare_password_input(password: str) -> str:
+    """Pre-hash passwords that exceed bcrypt's 72-byte input limit.
+
+    Uses UTF-8 bytes to match passlib behavior. Keeps backward compatibility by
+    returning the original password when within the limit.
+    """
+    password = password or ""
+    raw_bytes = password.encode("utf-8")
+    if len(raw_bytes) > _BCRYPT_MAX_INPUT_BYTES:
+        return sha256(raw_bytes).hexdigest()
+    return password
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    # Primary path: bcrypt-safe input (pre-hash if too long)
+    candidate = _prepare_password_input(plain_password)
+    try:
+        if pwd_context.verify(candidate, hashed_password):
+            return True
+    except Exception:
+        pass
+
+    # Backward compatibility: try legacy verification if the password was hashed
+    # without the pre-hash step.
+    if candidate != plain_password:
+        try:
+            return pwd_context.verify(plain_password or "", hashed_password)
+        except Exception:
+            return False
+    return False
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    return pwd_context.hash(_prepare_password_input(password))
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()

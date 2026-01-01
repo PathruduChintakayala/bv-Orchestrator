@@ -3,11 +3,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session, select, delete
 from datetime import datetime
 
-from .db import get_session
-from .auth import get_current_user
-from .models import Role, RolePermission, User, UserRole
-from .audit_utils import log_event, diff_dicts
-from .permissions import require_permission, ARTIFACTS
+from backend.db import get_session
+from backend.auth import get_current_user
+from backend.models import Role, RolePermission, User, UserRole
+from backend.audit_utils import log_event, diff_dicts
+from backend.permissions import require_permission, ARTIFACTS
 
 PERMISSIONS = ["view", "create", "edit", "delete"]
 

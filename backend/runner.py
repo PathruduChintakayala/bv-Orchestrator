@@ -7,11 +7,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlmodel import Session, select
 
-from .db import get_session
-from .models import Machine, Robot, Job, Process, Package, QueueItem
-from .packages import ensure_package_metadata
-from .robot_dependencies import get_current_robot
-from .audit_utils import log_event
+from backend.db import get_session
+from backend.models import Machine, Robot, Job, Process, Package, QueueItem
+from backend.packages import ensure_package_metadata
+from backend.robot_dependencies import get_current_robot
+from backend.audit_utils import log_event
 
 router = APIRouter(prefix="/runner", tags=["runner"])  # mounted under /api
 

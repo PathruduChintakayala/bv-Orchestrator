@@ -4,9 +4,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends
 from sqlmodel import select
 
-from .db import get_session
-from .auth import get_current_user
-from .models import Robot, Process, Job
+from backend.db import get_session
+from backend.auth import get_current_user
+from backend.models import Robot, Process, Job
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 

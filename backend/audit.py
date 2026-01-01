@@ -4,10 +4,10 @@ from sqlmodel import Session, select
 from datetime import datetime
 import json
 
-from .db import get_session
-from .auth import get_current_user
-from .permissions import require_permission
-from .models import AuditEvent, RolePermission, UserRole, User
+from backend.db import get_session
+from backend.auth import get_current_user
+from backend.permissions import require_permission
+from backend.models import AuditEvent, RolePermission, UserRole, User
 
 router = APIRouter(prefix="/audit", tags=["audit"])  # mounted under /api
 
