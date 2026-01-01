@@ -7,9 +7,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, delete, select
 
-from .auth import create_access_token, get_current_user
-from .db import get_session
-from .models import SdkAuthSession, User
+from backend.auth import create_access_token, get_current_user
+from backend.db import get_session
+from backend.models import SdkAuthSession, User
 
 router = APIRouter(prefix="/sdk/auth", tags=["sdk-auth"])
 

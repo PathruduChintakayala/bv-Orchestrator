@@ -11,13 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, R
 from fastapi.responses import FileResponse
 from sqlmodel import select
 
-from .db import get_session
-from .auth import get_current_user
-from .models import Package
-from .bvpackage import BvPackageValidationError, validate_and_extract_bvpackage
-from .audit_utils import log_event, diff_dicts
-from .robot_dependencies import get_current_robot
-from .permissions import require_permission
+from backend.db import get_session
+from backend.auth import get_current_user
+from backend.models import Package
+from backend.bvpackage import BvPackageValidationError, validate_and_extract_bvpackage
+from backend.audit_utils import log_event, diff_dicts
+from backend.robot_dependencies import get_current_robot
+from backend.permissions import require_permission
 
 router = APIRouter(prefix="/packages", tags=["packages"])
 

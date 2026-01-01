@@ -5,11 +5,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import select
 
-from .db import get_session
-from .auth import get_current_user
-from .models import Robot, Job, Machine, Asset
-from .audit_utils import log_event, diff_dicts
-from .permissions import require_permission
+from backend.db import get_session
+from backend.auth import get_current_user
+from backend.models import Robot, Job, Machine, Asset
+from backend.audit_utils import log_event, diff_dicts
+from backend.permissions import require_permission
 
 router = APIRouter(prefix="/robots", tags=["robots"])
 
@@ -72,7 +72,7 @@ def create_robot(payload: dict, request: Request, session=Depends(get_session), 
         if not username or not password:
             raise HTTPException(status_code=400, detail="credential.username and credential.password are required")
         # Store credentials as an Asset (masked on read). Password is stored hashed.
-        from .assets import hash_secret
+        from backend.assets import hash_secret
         import json
         # unique-ish asset name
         asset_name = f"robot_{name}_credential"

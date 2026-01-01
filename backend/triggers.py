@@ -5,11 +5,11 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlmodel import select
 
-from .auth import get_current_user
-from .permissions import require_permission
-from .db import get_session
-from .models import Trigger, TriggerType, Process, Queue
-from .audit_utils import log_event
+from backend.auth import get_current_user
+from backend.permissions import require_permission
+from backend.db import get_session
+from backend.models import Trigger, TriggerType, Process, Queue
+from backend.audit_utils import log_event
 
 router = APIRouter(prefix="/triggers", tags=["triggers"])
 

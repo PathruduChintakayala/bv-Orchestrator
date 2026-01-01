@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from .auth import get_current_user
-from .db import get_session
-from .models import JobExecutionLog, Job, Process, Robot, Machine
-from .permissions import require_permission
+from backend.auth import get_current_user
+from backend.db import get_session
+from backend.models import JobExecutionLog, Job, Process, Robot, Machine
+from backend.permissions import require_permission
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 

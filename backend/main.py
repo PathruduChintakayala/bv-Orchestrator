@@ -7,29 +7,29 @@ from jose import jwt
 
 from sqlmodel import Session
 
-from .db import engine, init_db
-from .auth import router as auth_router, ensure_admin_user
-from .dashboard import router as dashboard_router
-from .assets import router as assets_router
-from .processes import router as processes_router
-from .packages import router as packages_router
-from .robots import router as robots_router
-from .machines import router as machines_router
-from .jobs import router as jobs_router
-from .queues import router as queues_router
-from .queue_items import router as queue_items_router
-from .triggers import router as triggers_router
-from .access import router as access_router
-from .access import ensure_default_roles
-from .audit import router as audit_router
-from .settings import router as settings_router
-from .runner import router as runner_router
-from .sdk_auth import router as sdk_auth_router
-from .job_execution_logs import router as job_execution_logs_router
-from .logs import router as logs_router
-from .trigger_scheduler import scheduler
-from .models import User
-from .auth import SECRET_KEY, ALGORITHM
+from backend.db import engine, init_db
+from backend.auth import router as auth_router, ensure_admin_user
+from backend.dashboard import router as dashboard_router
+from backend.assets import router as assets_router
+from backend.processes import router as processes_router
+from backend.packages import router as packages_router
+from backend.robots import router as robots_router
+from backend.machines import router as machines_router
+from backend.jobs import router as jobs_router
+from backend.queues import router as queues_router
+from backend.queue_items import router as queue_items_router
+from backend.triggers import router as triggers_router
+from backend.access import router as access_router
+from backend.access import ensure_default_roles
+from backend.audit import router as audit_router
+from backend.settings import router as settings_router
+from backend.runner import router as runner_router
+from backend.sdk_auth import router as sdk_auth_router
+from backend.job_execution_logs import router as job_execution_logs_router
+from backend.logs import router as logs_router
+from backend.trigger_scheduler import scheduler
+from backend.models import User
+from backend.auth import SECRET_KEY, ALGORITHM
 
 app = FastAPI()
 

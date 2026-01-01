@@ -1,8 +1,8 @@
 from fastapi import Depends, Header, HTTPException, status
 from sqlmodel import Session, select
 
-from .db import get_session
-from .models import Robot
+from backend.db import get_session
+from backend.models import Robot
 
 
 def get_current_robot(

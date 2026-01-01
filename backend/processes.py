@@ -4,12 +4,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import select
 
-from .db import get_session
-from .auth import get_current_user
-from .models import Process, Package
-from .bvpackage import entrypoint_exists
-from .permissions import require_permission
-from .audit_utils import log_event, diff_dicts
+from backend.db import get_session
+from backend.auth import get_current_user
+from backend.models import Process, Package
+from backend.bvpackage import entrypoint_exists
+from backend.permissions import require_permission
+from backend.audit_utils import log_event, diff_dicts
 
 router = APIRouter(prefix="/processes", tags=["processes"])
 
@@ -23,7 +23,7 @@ def process_to_out(p: Process, session=None) -> dict:
     if p.package_id and session is not None:
         pkg = session.exec(select(Package).where(Package.id == p.package_id)).first()
         if pkg:
-            from .packages import to_out as pkg_to_out
+            from backend.packages import to_out as pkg_to_out
             pkg_out = pkg_to_out(pkg)
     return {
         "id": p.id,
