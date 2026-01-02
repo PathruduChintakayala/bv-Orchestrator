@@ -110,7 +110,7 @@ export default function QueueItemsPage() {
   // If no queueId is provided, show a message
   if (queueId === null) {
     return (
-      <div style={{ padding: 24 }}>
+      <div style={{ padding: 16 }}>
         <div style={{ textAlign: 'center', padding: 48 }}>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827', marginBottom: 16 }}>Queue Items</h1>
           <p style={{ color: '#6b7280', marginBottom: 24 }}>Please select a queue from the Queues page to view its items.</p>
@@ -123,20 +123,23 @@ export default function QueueItemsPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>{currentQueue ? `${currentQueue.name} – Items` : 'Queue Items'}</h1>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <select value={status} onChange={e=>setStatus(e.target.value as QueueItemStatus | '')} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-            <option value=''>All statuses</option>
-            {(['new','in_progress','completed','failed','deleted'] as QueueItemStatus[]).map(s=> <option key={s} value={s}>{s}</option>)}
-          </select>
-          <button onClick={load} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
-          <button onClick={openNew} style={primaryBtn}>New Item</button>
+    <div style={{ padding: 16 }}>
+      <div className="page-shell" style={{ gap: 12 }}>
+        <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <h1 className="page-title" style={{ margin: 0 }}>{currentQueue ? `${currentQueue.name} – Items` : 'Queue Items'}</h1>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <select value={status} onChange={e=>setStatus(e.target.value as QueueItemStatus | '')} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+              <option value=''>All statuses</option>
+              {(['new','in_progress','completed','failed','deleted'] as QueueItemStatus[]).map(s=> <option key={s} value={s}>{s}</option>)}
+            </select>
+            <button onClick={load} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
+            <button onClick={openNew} style={primaryBtn}>New Item</button>
+          </div>
         </div>
-      </div>
 
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
+        <div className="surface-card">
         {selected.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
             <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
@@ -184,8 +187,10 @@ export default function QueueItemsPage() {
         )}
       </div>
 
+      </div>
+
       {modalOpen && (
-        <NewItemModal queueId={queueId!} onCancel={closeModal} onSave={handleCreate} />
+        <NewItemModal onCancel={closeModal} onSave={handleCreate} />
       )}
 
       {selectedItem && (
@@ -218,7 +223,7 @@ function StatusBadge({ status }: { status: QueueItemStatus }) {
   )
 }
 
-function NewItemModal({ queueId, onCancel, onSave }: { queueId: number; onCancel: ()=>void; onSave:(v:FormValues)=>Promise<void> }) {
+function NewItemModal({ onCancel, onSave }: { onCancel: ()=>void; onSave:(v:FormValues)=>Promise<void> }) {
   const [form, setForm] = useState<FormValues>({ reference: '', priority: 0, payloadText: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -239,7 +244,7 @@ function NewItemModal({ queueId, onCancel, onSave }: { queueId: number; onCancel
     const payload = parsePayload()
     if (form.payloadText && !payload) return
     setError(null)
-    try { setSaving(true); await onSave({ queueId, reference: form.reference, priority: form.priority, payload }); } catch (e: any) { setError(e.message || 'Create failed') } finally { setSaving(false) }
+    try { setSaving(true); await onSave({ reference: form.reference, priority: form.priority, payload }); } catch (e: any) { setError(e.message || 'Create failed') } finally { setSaving(false) }
   }
 
   return (
@@ -273,10 +278,10 @@ function NewItemModal({ queueId, onCancel, onSave }: { queueId: number; onCancel
 function DetailsModal({ item, onClose }: { item: QueueItem; onClose: () => void }) {
   const toTitleCase = (str: string) => str.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b\w/g, l => l.toUpperCase())
 
-  const renderPayload = (payload: any): JSX.Element => {
+  const renderPayload = (payload: any): React.ReactElement => {
     if (!payload || typeof payload !== 'object') return <div>Specific Data: Empty</div>
 
-    const renderValue = (value: any, indent = 0): JSX.Element | string => {
+    const renderValue = (value: any, indent = 0): React.ReactElement | string => {
       if (value === null) return 'null'
       if (typeof value === 'boolean') return value ? 'true' : 'false'
       if (typeof value === 'string' || typeof value === 'number') return String(value)

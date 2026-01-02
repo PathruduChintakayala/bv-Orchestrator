@@ -116,3 +116,28 @@ def delete_machine(machine_id: int, request: Request, session: Session = Depends
         pass
 
     return None
+
+
+@router.post("/{machine_id}/regenerate-key", dependencies=[Depends(get_current_user), Depends(require_permission("machines", "update"))])
+def regenerate_machine_key(machine_id: int, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
+    m = session.exec(select(Machine).where(Machine.id == machine_id)).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Machine not found")
+    if m.mode != "runner":
+        raise HTTPException(status_code=400, detail="Only runner machines have keys")
+
+    # Generate new key
+    machine_key = secrets.token_urlsafe(24)
+    machine_key_hash = hashlib.sha256(machine_key.encode("utf-8")).hexdigest()
+
+    before = {"id": m.id, "name": m.name, "machine_key_hash": m.machine_key_hash}
+    m.machine_key_hash = machine_key_hash
+    m.updated_at = now_iso()
+    session.commit()
+
+    try:
+        log_event(session, action="machine.regenerate_key", entity_type="machine", entity_id=m.id, entity_name=m.name, before=before, after={"machine_key_hash": machine_key_hash}, metadata=None, request=request, user=user)
+    except Exception:
+        pass
+
+    return {"machine_key": machine_key}

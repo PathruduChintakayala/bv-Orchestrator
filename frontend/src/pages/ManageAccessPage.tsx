@@ -7,15 +7,19 @@ const ARTIFACTS: ArtifactKey[] = ['dashboard','processes','packages','assets','j
 export default function ManageAccessPage() {
   const [activeTab, setActiveTab] = useState<'roles' | 'users'>('roles')
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>Manage Access</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={()=>setActiveTab('roles')} style={activeTab==='roles'?primaryBtn:secondaryBtn}>Roles</button>
-          <button onClick={()=>setActiveTab('users')} style={activeTab==='users'?primaryBtn:secondaryBtn}>Users</button>
+    <div style={{ padding: 16 }}>
+      <div className="page-shell" style={{ gap: 12 }}>
+        <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <h1 className="page-title" style={{ margin: 0 }}>Manage Access</h1>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={()=>setActiveTab('roles')} style={activeTab==='roles'?primaryBtn:secondaryBtn}>Roles</button>
+            <button onClick={()=>setActiveTab('users')} style={activeTab==='users'?primaryBtn:secondaryBtn}>Users</button>
+          </div>
         </div>
+        {activeTab === 'roles' ? <RolesTab /> : <UsersTab />}
       </div>
-      {activeTab === 'roles' ? <RolesTab /> : <UsersTab />}
     </div>
   )
 }

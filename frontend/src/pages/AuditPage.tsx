@@ -51,12 +51,15 @@ export default function AuditPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>Audit</h1>
-      </div>
+    <div style={{ padding: 16 }}>
+      <div className="page-shell" style={{ gap: 12 }}>
+        <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <h1 className="page-title" style={{ margin: 0 }}>Audit</h1>
+          </div>
+        </div>
 
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 12, marginBottom: 12 }}>
+        <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 12, marginBottom: 12 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={inputStyle} />
           <input type="datetime-local" value={fromTime} onChange={e => setFromTime(e.target.value)} style={inputStyle} />
@@ -80,9 +83,9 @@ export default function AuditPage() {
           }} style={secondaryBtn}>Clear</button>
           <button onClick={() => load()} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
         </div>
-      </div>
+        </div>
 
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
+        <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
         {loading ? (
           <div>Loading…</div>
         ) : error ? (
@@ -121,9 +124,9 @@ export default function AuditPage() {
             </div>
           </>
         )}
-      </div>
+        </div>
 
-      {selected && (
+        {selected && (
         <div style={modalBackdrop} onClick={() => setSelected(null)}>
           <div style={modal} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -153,8 +156,9 @@ export default function AuditPage() {
               <Pre data={selected.metadata} />
             </div>
           </div>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

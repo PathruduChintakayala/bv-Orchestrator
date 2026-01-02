@@ -196,7 +196,7 @@ export default function ProcessesPage() {
                       <div className="cell-primary truncate" title={entrypointLabel(p)}>{entrypointLabel(p)}</div>
                     </td>
                     <td>
-                      <div className="cell-primary truncate" title={p.description}>{p.description || ""}</div>
+                      <div className="cell-primary truncate" title={p.description || undefined}>{p.description || ""}</div>
                     </td>
                     <td>{lastUpdated(p)}</td>
                     <td className="actions-col">
@@ -280,15 +280,6 @@ function SkeletonRows(count: number) {
 
 function Badge({ tone = "slate", children }: { tone?: "slate" | "blue"; children: React.ReactNode }) {
   return <span className={`badge badge-${tone}`}>{children}</span>;
-}
-
-function StatusBadge({ active }: { active: boolean }) {
-  return (
-    <span className={`status-badge ${active ? "on" : "off"}`}>
-      <span className="status-dot" aria-hidden />
-      {active ? "Active" : "Inactive"}
-    </span>
-  );
 }
 
 type MenuAction = { label: string; onClick: () => void; tone?: "danger" };
@@ -587,4 +578,3 @@ const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, bord
 const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBottom: 6 };
 const primaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#2563eb', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' };
 const secondaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#e5e7eb', color: '#111827', border: 'none', fontWeight: 600, cursor: 'pointer' };
-const dangerBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#dc2626', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' };

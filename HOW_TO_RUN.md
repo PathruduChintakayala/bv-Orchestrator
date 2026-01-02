@@ -16,7 +16,7 @@ FastAPI backend runs consistently on Windows, Linux, Docker, and CI with Python 
 
 ## Run (canonical command)
 - `python -m uvicorn backend.main:app`
-- Optional for development: add `--reload` to the same command.
+- Optional for development: `python -m uvicorn backend.main:app --reload` to the same command.
 
 ## API Docs
 - Swagger UI: http://localhost:8000/docs

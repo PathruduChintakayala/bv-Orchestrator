@@ -224,7 +224,6 @@ export default function TriggerModal({ open, onClose, defaultProcessId, lockProc
           robots={robots}
           lockProcess={lockProcess}
           validationErrors={validationErrors}
-          cronResult={cronResult}
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
           <button onClick={onClose} style={secondaryBtn}>Cancel</button>
@@ -237,7 +236,7 @@ export default function TriggerModal({ open, onClose, defaultProcessId, lockProc
   )
 }
 
-function TriggerForm({ form, setForm, processes, queues, robots, lockProcess, validationErrors, cronResult }: { form: FormValues; setForm: Dispatch<SetStateAction<FormValues>>; processes: Process[]; queues: Queue[]; robots: Robot[]; lockProcess?: boolean; validationErrors: Record<string, string>; cronResult: { cron: string | null; error?: string } }) {
+function TriggerForm({ form, setForm, processes, queues, robots, lockProcess, validationErrors }: { form: FormValues; setForm: Dispatch<SetStateAction<FormValues>>; processes: Process[]; queues: Queue[]; robots: Robot[]; lockProcess?: boolean; validationErrors: Record<string, string> }) {
   const errors = validationErrors
 
   const toggleWeekday = (day: Weekday) => {

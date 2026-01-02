@@ -93,17 +93,20 @@ export default function AssetsPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>Assets</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search assets…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-          <button onClick={()=>load(search)} style={secondaryBtn}>Search</button>
-          <button onClick={openNew} style={{...primaryBtn, opacity: canCreate ? 1 : 0.6, cursor: canCreate ? 'pointer' : 'not-allowed'}} disabled={!canCreate}>New Asset</button>
+    <div style={{ padding: 16 }}>
+      <div className="page-shell" style={{ gap: 12 }}>
+        <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <h1 className="page-title" style={{ margin: 0 }}>Assets</h1>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search assets…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+            <button onClick={()=>load(search)} style={secondaryBtn}>Search</button>
+            <button onClick={openNew} style={{...primaryBtn, opacity: canCreate ? 1 : 0.6, cursor: canCreate ? 'pointer' : 'not-allowed'}} disabled={!canCreate}>New Asset</button>
+          </div>
         </div>
-      </div>
 
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
+        <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
         {loading ? <p>Loading…</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -134,15 +137,16 @@ export default function AssetsPage() {
             </tbody>
           </table>
         )}
-      </div>
+        </div>
 
-      {modalOpen && (
+        {modalOpen && (
         <AssetModal
           initial={editing || null}
           onCancel={closeModal}
           onSave={handleSave}
         />
-      )}
+        )}
+      </div>
     </div>
   );
 }
