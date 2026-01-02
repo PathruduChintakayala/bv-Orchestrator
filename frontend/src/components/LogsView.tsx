@@ -38,7 +38,7 @@ export default function LogsView({ scope, jobExecutionId, jobId, initialProcessI
   const [offset, setOffset] = useState(0)
   const [order, setOrder] = useState<'asc' | 'desc'>('desc')
   const [job, setJob] = useState<Job | null>(null)
-  const [showFilters, setShowFilters] = useState(true)
+  const [showFilters, setShowFilters] = useState(false)
 
   useEffect(() => { void loadMeta() }, [])
   useEffect(() => {

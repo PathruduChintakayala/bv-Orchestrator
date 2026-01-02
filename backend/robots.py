@@ -7,11 +7,30 @@ from sqlmodel import select
 
 from backend.db import get_session
 from backend.auth import get_current_user
-from backend.models import Robot, Job, Machine, Asset
+from backend.models import Robot, Job, Machine
 from backend.audit_utils import log_event, diff_dicts
 from backend.permissions import require_permission
 
 router = APIRouter(prefix="/robots", tags=["robots"])
+
+
+def _validate_provisioning_credentials(*, machine: Optional[Machine], username: str, password: str):
+    """Validate host credentials for provisioning without persisting them.
+
+    This intentionally performs validation up front and discards credentials immediately
+    after use to avoid leaking them into Assets or logs.
+    """
+    if machine is None:
+        raise HTTPException(status_code=400, detail="A machine is required when supplying credentials")
+    if machine.mode != "runner":
+        raise HTTPException(status_code=400, detail="Credentials can only be validated against runner machines")
+    if not machine.status or machine.status.lower() != "connected":
+        raise HTTPException(status_code=400, detail="Machine must be connected to validate credentials")
+    # Placeholder for real host authentication. We deliberately avoid logging secrets.
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="credential.username and credential.password are required")
+    # Future enhancement: perform an actual auth handshake against the runner/host here.
+    return True
 
 def now_iso():
     return datetime.now().isoformat(timespec='seconds')
@@ -77,26 +96,9 @@ def create_robot(payload: dict, request: Request, session=Depends(get_session), 
         password = (cred.get("password") or "").strip()
         if not username or not password:
             raise HTTPException(status_code=400, detail="credential.username and credential.password are required")
-        # Store credentials as an Asset (masked on read). Password is stored hashed.
-        from backend.assets import hash_secret
-        import json
-        # unique-ish asset name
-        asset_name = f"robot_{name}_credential"
-        if session.exec(select(Asset).where(Asset.name == asset_name)).first():
-            asset_name = f"{asset_name}_{secrets.token_hex(4)}"
-        a = Asset(
-            name=asset_name,
-            type="credential",
-            value=json.dumps({"username": username, "password_hash": hash_secret(password)}),
-            is_secret=True,
-            description=f"Credential for robot {name}",
-            created_at=now_iso(),
-            updated_at=now_iso(),
-        )
-        session.add(a)
-        session.commit()
-        session.refresh(a)
-        credential_asset_id = a.id
+        if machine_id is None or not m:
+            raise HTTPException(status_code=400, detail="A machine is required when supplying credentials")
+        _validate_provisioning_credentials(machine=m, username=username, password=password)
 
     r = Robot(
         name=name,

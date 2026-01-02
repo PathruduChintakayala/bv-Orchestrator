@@ -3,6 +3,7 @@ import type { Process } from "../types/processes";
 import { fetchProcesses, createProcess, updateProcess, deleteProcess } from "../api/processes";
 import { fetchPackages } from "../api/packages";
 import TriggerModal from "../components/TriggerModal";
+import { getProcessTypeLabel, getProcessTypeTone } from "../utils/processTypes";
 
 export default function ProcessesPage() {
   const [items, setItems] = useState<Process[]>([]);
@@ -16,6 +17,7 @@ export default function ProcessesPage() {
   const [pendingSearch, setPendingSearch] = useState("");
   const [triggerModalOpen, setTriggerModalOpen] = useState(false);
   const [triggerProcessId, setTriggerProcessId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -99,8 +101,42 @@ export default function ProcessesPage() {
     }
   }
 
+  function toggleSelect(id: number) {
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function toggleSelectAll() {
+    if (selected.length === items.length) {
+      setSelected([])
+    } else {
+      setSelected(items.map(it => it.id))
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selected.length === 0) return
+    if (!confirm(`Delete ${selected.length} selected process(es)? This action cannot be undone.`)) return
+    let successCount = 0
+    let errorMessages: string[] = []
+    for (const id of selected) {
+      try {
+        await deleteProcess(id)
+        successCount++
+      } catch (e: any) {
+        errorMessages.push(`Failed to delete process ${id}: ${e.message || 'Unknown error'}`)
+      }
+    }
+    if (errorMessages.length > 0) {
+      alert(`Deleted ${successCount} process(es).\n\nErrors:\n${errorMessages.join('\n')}`)
+    } else {
+      alert(`Successfully deleted ${successCount} process(es).`)
+    }
+    setSelected([])
+    await load(search)
+  }
+
   function typeLabel(p: Process) {
-    return p.package?.isBvpackage ? "RPA" : "Agent";
+    return getProcessTypeLabel(p.package?.isBvpackage ?? false)
   }
 
   function entrypointLabel(p: Process) {
@@ -170,10 +206,19 @@ export default function ProcessesPage() {
 
         <div className="surface-card">
           {error && <div className="alert alert-error" role="alert">{error}</div>}
+          {selected.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
+              <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
+              <button onClick={handleBulkDelete} style={dangerBtn}>Delete</button>
+            </div>
+          )}
           <div className="table-wrapper" role="region" aria-live="polite">
             <table className="processes-table" aria-busy={loading}>
               <thead>
                 <tr>
+                  <th style={{ width: 40 }}>
+                    <input type="checkbox" checked={selected.length === items.length && items.length > 0} onChange={toggleSelectAll} />
+                  </th>
                   <th scope="col">Name</th>
                   <th scope="col">Type</th>
                   <th scope="col">Version</th>
@@ -188,9 +233,12 @@ export default function ProcessesPage() {
                 {!loading && items.map((p) => (
                   <tr key={p.id} className="data-row">
                     <td>
+                      <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggleSelect(p.id)} />
+                    </td>
+                    <td>
                       <div className="cell-primary">{p.name}</div>
                     </td>
-                    <td><Badge tone={p.package?.isBvpackage ? "blue" : "slate"}>{typeLabel(p)}</Badge></td>
+                    <td><Badge tone={getProcessTypeTone(p.package?.isBvpackage ?? false)}>{typeLabel(p)}</Badge></td>
                     <td><span className="mono">{p.package?.version || "N/A"}</span></td>
                     <td>
                       <div className="cell-primary truncate" title={entrypointLabel(p)}>{entrypointLabel(p)}</div>
@@ -220,7 +268,7 @@ export default function ProcessesPage() {
                 ))}
                 {!loading && items.length === 0 && (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <div className="empty-state">
                         <div>
                           <p className="empty-title">No processes yet</p>
@@ -578,3 +626,4 @@ const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, bord
 const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBottom: 6 };
 const primaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#2563eb', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' };
 const secondaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#e5e7eb', color: '#111827', border: 'none', fontWeight: 600, cursor: 'pointer' };
+const dangerBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#dc2626', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' };

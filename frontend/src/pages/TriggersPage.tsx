@@ -12,6 +12,7 @@ import TriggerModal from "../components/TriggerModal"
 
 const primaryBtn: CSSProperties = { padding: "10px 14px", borderRadius: 8, backgroundColor: "#2563eb", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }
 const secondaryBtn: CSSProperties = { padding: "10px 14px", borderRadius: 8, backgroundColor: "#e5e7eb", color: "#111827", border: "none", fontWeight: 600, cursor: "pointer" }
+const dangerBtn: CSSProperties = { padding: "10px 14px", borderRadius: 8, backgroundColor: "#dc2626", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }
 
 export default function TriggersPage() {
   const [items, setItems] = useState<Trigger[]>([])
@@ -25,6 +26,7 @@ export default function TriggersPage() {
   const [editing, setEditing] = useState<Trigger | null>(null)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
+  const [selected, setSelected] = useState<string[]>([])
 
   useEffect(() => { void load() }, [])
 
@@ -107,6 +109,40 @@ export default function TriggersPage() {
     }
   }
 
+  function toggleSelect(id: string) {
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function toggleSelectAll() {
+    if (selected.length === items.length) {
+      setSelected([])
+    } else {
+      setSelected(items.map(it => it.id))
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selected.length === 0) return
+    if (!confirm(`Delete ${selected.length} selected trigger(s)? This action cannot be undone.`)) return
+    let successCount = 0
+    let errorMessages: string[] = []
+    for (const id of selected) {
+      try {
+        await deleteTrigger(id)
+        successCount++
+      } catch (e: any) {
+        errorMessages.push(`Failed to delete trigger ${id}: ${e.message || 'Unknown error'}`)
+      }
+    }
+    if (errorMessages.length > 0) {
+      alert(`Deleted ${successCount} trigger(s).\n\nErrors:\n${errorMessages.join('\n')}`)
+    } else {
+      alert(`Successfully deleted ${successCount} trigger(s).`)
+    }
+    setSelected([])
+    await load()
+  }
+
   function handleViewJobs(t: Trigger) {
     window.location.hash = `#/automations/jobs?processId=${t.processId}&source=Trigger`
   }
@@ -129,10 +165,19 @@ export default function TriggersPage() {
         </div>
 
         <div className="surface-card" style={{ padding: 16 }}>
+        {selected.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
+            <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
+            <button onClick={handleBulkDelete} style={dangerBtn}>Delete</button>
+          </div>
+        )}
         {loading ? <p>Loading...</p> : error ? <p style={{ color: "#b91c1c" }}>{error}</p> : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
+                <th style={{ width: 40 }}>
+                  <input type="checkbox" checked={selected.length === filtered.length && filtered.length > 0} onChange={toggleSelectAll} />
+                </th>
                 <th>Name</th>
                 <th>Type</th>
                 <th>Process</th>
@@ -145,6 +190,9 @@ export default function TriggersPage() {
             <tbody>
               {filtered.map(t => (
                 <tr key={t.id}>
+                  <td>
+                    <input type="checkbox" checked={selected.includes(t.id)} onChange={() => toggleSelect(t.id)} />
+                  </td>
                   <td>{t.name}</td>
                   <td>{t.type}</td>
                   <td>{processNameById.get(t.processId) || `Process ${t.processId}`}</td>
@@ -170,7 +218,7 @@ export default function TriggersPage() {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={7} style={{ paddingTop: 12, color: "#6b7280" }}>No triggers found</td></tr>
+                <tr><td colSpan={8} style={{ paddingTop: 12, color: "#6b7280" }}>No triggers found</td></tr>
               )}
             </tbody>
           </table>

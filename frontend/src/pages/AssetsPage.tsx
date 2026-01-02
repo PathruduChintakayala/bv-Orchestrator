@@ -24,6 +24,19 @@ export default function AssetsPage() {
   const [canCreate, setCanCreate] = useState(true);
   const [canEdit, setCanEdit] = useState(true);
   const [canDelete, setCanDelete] = useState(true);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.action-menu')) {
+        setMenuOpenId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -86,10 +99,45 @@ export default function AssetsPage() {
     if (!confirm("Delete this asset?")) return;
     try {
       await deleteAsset(id);
+      setSelected(prev => prev.filter(x => x !== id));
       await load(search);
     } catch (e: any) {
       alert(e.message || "Delete failed");
     }
+  }
+
+  function toggleSelect(id: number) {
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
+  function toggleSelectAll() {
+    if (selected.length === assets.length) {
+      setSelected([]);
+    } else {
+      setSelected(assets.map(a => a.id));
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selected.length === 0) return;
+    if (!confirm(`Delete ${selected.length} selected asset(s)? This action cannot be undone.`)) return;
+    let successCount = 0;
+    let errorMessages: string[] = [];
+    for (const id of selected) {
+      try {
+        await deleteAsset(id);
+        successCount++;
+      } catch (e: any) {
+        errorMessages.push(`Failed to delete asset ${id}: ${e.message || 'Unknown error'}`);
+      }
+    }
+    if (errorMessages.length > 0) {
+      alert(`Deleted ${successCount} asset(s).\n\nErrors:\n${errorMessages.join('\n')}`);
+    } else {
+      alert(`Successfully deleted ${successCount} asset(s).`);
+    }
+    setSelected([]);
+    await load(search);
   }
 
   return (
@@ -108,34 +156,57 @@ export default function AssetsPage() {
 
         <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
         {loading ? <p>Loading…</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
-                <th style={{ paddingBottom: 8 }}>Name</th>
-                <th style={{ paddingBottom: 8 }}>Type</th>
-                <th style={{ paddingBottom: 8 }}>Value</th>
-                <th style={{ paddingBottom: 8 }}>Description</th>
-                <th style={{ paddingBottom: 8 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {assets.map(a => (
-                <tr key={a.id} style={{ fontSize: 14, color: '#111827' }}>
-                  <td style={{ padding: '6px 0' }}>{a.name}</td>
-                  <td style={{ padding: '6px 0' }}>{formatAssetType(a.type as AssetType)}</td>
-                  <td style={{ padding: '6px 0' }}>{a.type === 'secret' ? '••••••' : a.type === 'credential' ? (a.username || '') : a.value}</td>
-                  <td style={{ padding: '6px 0', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.description || ''}</td>
-                  <td style={{ padding: '6px 0' }}>
-                    <button style={{...secondaryBtn, opacity: canEdit ? 1 : 0.6, cursor: canEdit ? 'pointer' : 'not-allowed'}} onClick={()=>openEdit(a)} disabled={!canEdit}>Edit</button>{' '}
-                    <button style={{...dangerBtn, opacity: canDelete ? 1 : 0.6, cursor: canDelete ? 'pointer' : 'not-allowed'}} onClick={()=>handleDelete(a.id)} disabled={!canDelete}>Delete</button>
-                  </td>
+          <>
+            {selected.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
+                <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
+                <button onClick={handleBulkDelete} style={{...dangerBtn, opacity: canDelete ? 1 : 0.6, cursor: canDelete ? 'pointer' : 'not-allowed'}} disabled={!canDelete}>Delete</button>
+              </div>
+            )}
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ fontSize: 12, color: '#6b7280' }}>
+                  <th style={{ padding: '8px 12px', width: 40, textAlign: 'center' }}>
+                    <input type="checkbox" checked={selected.length === assets.length && assets.length > 0} onChange={toggleSelectAll} style={{ verticalAlign: 'middle' }} />
+                  </th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Name</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Type</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Value</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Description</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Actions</th>
                 </tr>
-              ))}
-              {assets.length === 0 && (
-                <tr><td colSpan={5} style={{ paddingTop: 12, color: '#6b7280' }}>No assets found</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {assets.map(a => (
+                  <tr key={a.id} style={{ fontSize: 14, color: '#111827' }}>
+                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                      <input type="checkbox" checked={selected.includes(a.id)} onChange={() => toggleSelect(a.id)} style={{ verticalAlign: 'middle' }} />
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{a.name}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{formatAssetType(a.type as AssetType)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{a.type === 'secret' ? '••••••' : a.type === 'credential' ? (a.username || '') : a.value}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.description || ''}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                      {(canEdit || canDelete) && (
+                        <ActionMenu
+                          open={menuOpenId === a.id}
+                          onToggle={() => setMenuOpenId(menuOpenId === a.id ? null : a.id)}
+                          onClose={() => setMenuOpenId(null)}
+                          actions={[
+                            ...(canEdit ? [{ label: "Edit", onClick: () => openEdit(a) }] as const : []),
+                            ...(canDelete ? [{ label: "Delete", tone: "danger" as const, onClick: () => handleDelete(a.id) }] as const : []),
+                          ]}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {assets.length === 0 && (
+                  <tr><td colSpan={6} style={{ padding: '8px 12px', textAlign: 'left', color: '#6b7280' }}>No assets found</td></tr>
+                )}
+              </tbody>
+            </table>
+          </>
         )}
         </div>
 
@@ -147,6 +218,45 @@ export default function AssetsPage() {
         />
         )}
       </div>
+    </div>
+  );
+}
+
+type MenuAction = { label: string; onClick: () => void; tone?: "danger" };
+function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onToggle: () => void; onClose: () => void; actions: MenuAction[] }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="action-menu">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="btn btn-ghost icon-button"
+      >
+        ⋮
+      </button>
+      {open && (
+        <div className="menu-panel" role="menu">
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              role="menuitem"
+              className={`menu-item ${a.tone === "danger" ? "danger" : ""}`}
+              onClick={() => { a.onClick(); onClose(); }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

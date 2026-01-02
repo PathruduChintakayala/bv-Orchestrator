@@ -83,33 +83,33 @@ export default function RobotsPage() {
         {loading ? <p>Loading…</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
-                <th style={{ paddingBottom: 8 }}>Name</th>
-                <th style={{ paddingBottom: 8 }}>Status</th>
-                <th style={{ paddingBottom: 8 }}>Last heartbeat</th>
-                <th style={{ paddingBottom: 8 }}>Current job</th>
-                <th style={{ paddingBottom: 8 }}>Machine</th>
-                <th style={{ paddingBottom: 8 }}>Actions</th>
+              <tr style={{ fontSize: 12, color: '#6b7280' }}>
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Name</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Status</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Last heartbeat</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Current job</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Machine</th>
+                <th style={{ padding: '8px 12px', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {items.map(r => (
                 <tr key={r.id} style={{ fontSize: 14, color: '#111827' }}>
-                  <td style={{ padding: '6px 0' }}>{r.name}</td>
-                  <td style={{ padding: '6px 0' }}>
+                  <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.name}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'left' }}>
                     <span style={{ padding: '4px 8px', borderRadius: 999, backgroundColor: r.status === 'online' ? '#dcfce7' : '#e5e7eb', color: r.status === 'online' ? '#166534' : '#374151' }}>{r.status}</span>
                   </td>
-                  <td style={{ padding: '6px 0' }}>{r.lastHeartbeat ? new Date(r.lastHeartbeat).toLocaleString() : '—'}</td>
-                  <td style={{ padding: '6px 0' }}>{r.currentJobId ?? '—'}</td>
-                  <td style={{ padding: '6px 0', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.machineInfo ?? '—'}</td>
-                  <td style={{ padding: '6px 0' }}>
+                  <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.lastHeartbeat ? new Date(r.lastHeartbeat).toLocaleString() : '—'}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.currentJobId ?? '—'}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'left', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.machineInfo ?? '—'}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                     <button style={secondaryBtn} onClick={()=>openEdit(r)}>Edit</button>{' '}
                     <button style={dangerBtn} onClick={()=>handleDelete(r.id)}>Delete</button>
                   </td>
                 </tr>
               ))}
               {items.length === 0 && (
-                <tr><td colSpan={6} style={{ paddingTop: 12, color: '#6b7280' }}>No robots found</td></tr>
+                <tr><td colSpan={6} style={{ padding: '8px 12px', textAlign: 'left', color: '#6b7280' }}>No robots found</td></tr>
               )}
             </tbody>
           </table>
