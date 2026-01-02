@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { Machine, MachineMode, MachineStatus } from "../types/machine";
 import type { Robot } from "../types/robot";
 import { createMachine, deleteMachine, fetchMachines, getMachine, regenerateMachineKey } from "../api/machines";
@@ -14,9 +15,21 @@ export default function MachinesPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selected, setSelected] = useState<Machine | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
 
   useEffect(() => {
     load();
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.action-menu')) {
+        setMenuOpenId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   async function load() {
@@ -110,13 +123,13 @@ export default function MachinesPage() {
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ textAlign: "left", fontSize: 12, color: "#6b7280" }}>
-                <th style={{ paddingBottom: 8 }}>Machine Name</th>
-                <th style={{ paddingBottom: 8 }}>Mode</th>
-                <th style={{ paddingBottom: 8 }}>Status</th>
-                <th style={{ paddingBottom: 8 }}>Robots</th>
-                <th style={{ paddingBottom: 8 }}>Last Seen</th>
-                <th style={{ paddingBottom: 8 }}>Actions</th>
+              <tr style={{ fontSize: 12, color: "#6b7280" }}>
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Machine Name</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Mode</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Status</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Robots</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Last Seen</th>
+                <th style={{ padding: '8px 12px', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -126,11 +139,14 @@ export default function MachinesPage() {
                   machine={m}
                   onOpen={() => openDetails(m)}
                   onDelete={() => handleDelete(m)}
+                  menuOpen={menuOpenId === m.id}
+                  onToggleMenu={() => setMenuOpenId(menuOpenId === m.id ? null : m.id)}
+                  onCloseMenu={() => setMenuOpenId(null)}
                 />
               ))}
               {filteredItems.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ paddingTop: 12, color: "#6b7280" }}>
+                  <td colSpan={6} style={{ padding: '8px 12px', textAlign: 'left', color: "#6b7280" }}>
                     No machines found
                   </td>
                 </tr>
@@ -171,24 +187,17 @@ function MachineRow({
   machine,
   onOpen,
   onDelete,
+  menuOpen,
+  onToggleMenu,
+  onCloseMenu,
 }: {
   machine: Machine;
   onOpen: () => void;
   onDelete: () => void;
+  menuOpen: boolean;
+  onToggleMenu: () => void;
+  onCloseMenu: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   const modeLabel = machine.mode === "runner" ? "Runner (Service)" : "Development";
   const deleteDisabled = machine.robotCount > 0;
 
@@ -196,66 +205,24 @@ function MachineRow({
     <tr
       style={{ fontSize: 14, color: "#111827", cursor: "pointer" }}
       onClick={() => {
-        if (!open) onOpen();
+        if (!menuOpen) onOpen();
       }}
     >
-      <td style={{ padding: "6px 0" }}>{machine.name}</td>
-      <td style={{ padding: "6px 0" }}>{modeLabel}</td>
-      <td style={{ padding: "6px 0" }}>{renderStatusBadge(machine.status)}</td>
-      <td style={{ padding: "6px 0" }}>{machine.robotCount}</td>
-      <td style={{ padding: "6px 0" }}>{machine.lastSeenAt ? new Date(machine.lastSeenAt).toLocaleString() : "—"}</td>
-      <td style={{ padding: "6px 0" }} onClick={(e) => e.stopPropagation()}>
-        <div ref={menuRef} style={{ position: "relative", display: "inline-block" }}>
-          <button
-            style={secondaryBtn}
-            onClick={() => setOpen((v) => !v)}
-            aria-label="Actions"
-          >
-            Actions
-          </button>
-          {open && (
-            <div
-              role="menu"
-              style={{
-                position: "absolute",
-                right: 0,
-                marginTop: 8,
-                background: "#fff",
-                border: "1px solid #e5e7eb",
-                boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
-                borderRadius: 8,
-                minWidth: 180,
-                overflow: "hidden",
-                zIndex: 5,
-              }}
-            >
-              <button
-                onClick={() => {
-                  setOpen(false);
-                  onOpen();
-                }}
-                style={menuItemBtn}
-              >
-                View Details
-              </button>
-              <button
-                onClick={() => {
-                  if (deleteDisabled) return;
-                  setOpen(false);
-                  onDelete();
-                }}
-                style={{
-                  ...menuItemBtn,
-                  color: deleteDisabled ? "#9ca3af" : "#b91c1c",
-                  cursor: deleteDisabled ? "not-allowed" : "pointer",
-                }}
-                title={deleteDisabled ? "Machine cannot be deleted while robots exist" : "Delete machine"}
-              >
-                Delete
-              </button>
-            </div>
-          )}
-        </div>
+      <td style={{ padding: '8px 12px', textAlign: 'left' }}>{machine.name}</td>
+      <td style={{ padding: '8px 12px', textAlign: 'left' }}>{modeLabel}</td>
+      <td style={{ padding: '8px 12px', textAlign: 'left' }}>{renderStatusBadge(machine.status)}</td>
+      <td style={{ padding: '8px 12px', textAlign: 'left' }}>{machine.robotCount}</td>
+      <td style={{ padding: '8px 12px', textAlign: 'left' }}>{machine.lastSeenAt ? new Date(machine.lastSeenAt).toLocaleString() : "—"}</td>
+      <td style={{ padding: '8px 12px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+        <ActionMenu
+          open={menuOpen}
+          onToggle={onToggleMenu}
+          onClose={onCloseMenu}
+          actions={[
+            { label: "View Details", onClick: onOpen },
+            { label: "Delete", tone: "danger" as const, onClick: onDelete, disabled: deleteDisabled },
+          ]}
+        />
       </td>
     </tr>
   );
@@ -588,11 +555,107 @@ const primaryBtn: React.CSSProperties = { padding: "10px 14px", borderRadius: 8,
 const secondaryBtn: React.CSSProperties = { padding: "10px 14px", borderRadius: 8, backgroundColor: "#e5e7eb", color: "#111827", border: "none", fontWeight: 600, cursor: "pointer" };
 const dangerBtn: React.CSSProperties = { padding: "10px 14px", borderRadius: 8, backgroundColor: "#dc2626", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" };
 
-const menuItemBtn: React.CSSProperties = {
-  width: "100%",
-  textAlign: "left",
-  padding: "10px 12px",
-  background: "transparent",
-  border: "none",
-  cursor: "pointer",
-};
+type MenuAction = { label: string; onClick: () => void; tone?: "danger"; disabled?: boolean };
+function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onToggle: () => void; onClose: () => void; actions: MenuAction[] }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node) && buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open, onClose]);
+
+  const menuStyle = useMemo(() => {
+    if (!open || !buttonRef.current) return {};
+    const rect = buttonRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const menuHeight = actions.length * 40 + 16; // estimate height
+    const menuWidth = 180;
+
+    let top = rect.bottom + 8;
+    let left = rect.right - menuWidth; // align right edge
+
+    // If not enough space below, flip above
+    if (top + menuHeight > viewportHeight && rect.top - menuHeight - 8 > 0) {
+      top = rect.top - menuHeight - 8;
+    }
+
+    // If not enough space on right, align left
+    if (left < 0) {
+      left = rect.left;
+    }
+
+    // Ensure within viewport
+    if (left + menuWidth > viewportWidth) {
+      left = viewportWidth - menuWidth - 8;
+    }
+
+    return { position: 'fixed' as const, top, left, zIndex: 1000 };
+  }, [open, actions.length]);
+
+  return (
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={onToggle}
+        style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
+      >
+        ⋮
+      </button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          style={{
+            ...menuStyle,
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
+            borderRadius: 8,
+            minWidth: 180,
+            overflow: "hidden",
+          }}
+        >
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              role="menuitem"
+              disabled={a.disabled}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                background: "transparent",
+                border: "none",
+                cursor: a.disabled ? "not-allowed" : "pointer",
+                color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+              }}
+              onClick={() => { if (!a.disabled) { a.onClick(); onClose(); } }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}

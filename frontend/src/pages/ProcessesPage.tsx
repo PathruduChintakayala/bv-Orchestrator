@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { Process } from "../types/processes";
 import { fetchProcesses, createProcess, updateProcess, deleteProcess } from "../api/processes";
 import { fetchPackages } from "../api/packages";
 import TriggerModal from "../components/TriggerModal";
+import { getProcessTypeLabel, getProcessTypeTone } from "../utils/processTypes";
 
 export default function ProcessesPage() {
   const [items, setItems] = useState<Process[]>([]);
@@ -16,6 +18,7 @@ export default function ProcessesPage() {
   const [pendingSearch, setPendingSearch] = useState("");
   const [triggerModalOpen, setTriggerModalOpen] = useState(false);
   const [triggerProcessId, setTriggerProcessId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -99,8 +102,42 @@ export default function ProcessesPage() {
     }
   }
 
+  function toggleSelect(id: number) {
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function toggleSelectAll() {
+    if (selected.length === items.length) {
+      setSelected([])
+    } else {
+      setSelected(items.map(it => it.id))
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selected.length === 0) return
+    if (!confirm(`Delete ${selected.length} selected process(es)? This action cannot be undone.`)) return
+    let successCount = 0
+    let errorMessages: string[] = []
+    for (const id of selected) {
+      try {
+        await deleteProcess(id)
+        successCount++
+      } catch (e: any) {
+        errorMessages.push(`Failed to delete process ${id}: ${e.message || 'Unknown error'}`)
+      }
+    }
+    if (errorMessages.length > 0) {
+      alert(`Deleted ${successCount} process(es).\n\nErrors:\n${errorMessages.join('\n')}`)
+    } else {
+      alert(`Successfully deleted ${successCount} process(es).`)
+    }
+    setSelected([])
+    await load(search)
+  }
+
   function typeLabel(p: Process) {
-    return p.package?.isBvpackage ? "RPA" : "Agent";
+    return getProcessTypeLabel(p.package?.isBvpackage ?? false)
   }
 
   function entrypointLabel(p: Process) {
@@ -170,10 +207,19 @@ export default function ProcessesPage() {
 
         <div className="surface-card">
           {error && <div className="alert alert-error" role="alert">{error}</div>}
+          {selected.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
+              <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
+              <button onClick={handleBulkDelete} style={dangerBtn}>Delete</button>
+            </div>
+          )}
           <div className="table-wrapper" role="region" aria-live="polite">
             <table className="processes-table" aria-busy={loading}>
               <thead>
                 <tr>
+                  <th style={{ width: 40 }}>
+                    <input type="checkbox" checked={selected.length === items.length && items.length > 0} onChange={toggleSelectAll} />
+                  </th>
                   <th scope="col">Name</th>
                   <th scope="col">Type</th>
                   <th scope="col">Version</th>
@@ -188,9 +234,12 @@ export default function ProcessesPage() {
                 {!loading && items.map((p) => (
                   <tr key={p.id} className="data-row">
                     <td>
+                      <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggleSelect(p.id)} />
+                    </td>
+                    <td>
                       <div className="cell-primary">{p.name}</div>
                     </td>
-                    <td><Badge tone={p.package?.isBvpackage ? "blue" : "slate"}>{typeLabel(p)}</Badge></td>
+                    <td><Badge tone={getProcessTypeTone(p.package?.isBvpackage ?? false)}>{typeLabel(p)}</Badge></td>
                     <td><span className="mono">{p.package?.version || "N/A"}</span></td>
                     <td>
                       <div className="cell-primary truncate" title={entrypointLabel(p)}>{entrypointLabel(p)}</div>
@@ -220,7 +269,7 @@ export default function ProcessesPage() {
                 ))}
                 {!loading && items.length === 0 && (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <div className="empty-state">
                         <div>
                           <p className="empty-title">No processes yet</p>
@@ -282,8 +331,11 @@ function Badge({ tone = "slate", children }: { tone?: "slate" | "blue"; children
   return <span className={`badge badge-${tone}`}>{children}</span>;
 }
 
-type MenuAction = { label: string; onClick: () => void; tone?: "danger" };
+type MenuAction = { label: string; onClick: () => void; tone?: "danger"; disabled?: boolean };
 function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onToggle: () => void; onClose: () => void; actions: MenuAction[] }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -292,30 +344,93 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node) && buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open, onClose]);
+
+  const menuStyle = useMemo(() => {
+    if (!open || !buttonRef.current) return {};
+    const rect = buttonRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const menuHeight = actions.length * 40 + 16; // estimate height
+    const menuWidth = 180;
+
+    let top = rect.bottom + 8;
+    let left = rect.right - menuWidth; // align right edge
+
+    // If not enough space below, flip above
+    if (top + menuHeight > viewportHeight && rect.top - menuHeight - 8 > 0) {
+      top = rect.top - menuHeight - 8;
+    }
+
+    // If not enough space on right, align left
+    if (left < 0) {
+      left = rect.left;
+    }
+
+    // Ensure within viewport
+    if (left + menuWidth > viewportWidth) {
+      left = viewportWidth - menuWidth - 8;
+    }
+
+    return { position: 'fixed' as const, top, left, zIndex: 1000 };
+  }, [open, actions.length]);
+
   return (
-    <div className="action-menu">
+    <div style={{ position: "relative", display: "inline-block" }}>
       <button
+        ref={buttonRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={onToggle}
-        className="btn btn-ghost icon-button"
+        style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
       >
         ⋮
       </button>
-      {open && (
-        <div className="menu-panel" role="menu">
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          style={{
+            ...menuStyle,
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
+            borderRadius: 8,
+            minWidth: 180,
+            overflow: "hidden",
+          }}
+        >
           {actions.map((a) => (
             <button
               key={a.label}
               role="menuitem"
-              className={`menu-item ${a.tone === "danger" ? "danger" : ""}`}
-              onClick={() => { a.onClick(); onClose(); }}
+              disabled={a.disabled}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                background: "transparent",
+                border: "none",
+                cursor: a.disabled ? "not-allowed" : "pointer",
+                color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+              }}
+              onClick={() => { if (!a.disabled) { a.onClick(); onClose(); } }}
             >
               {a.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -578,3 +693,4 @@ const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, bord
 const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBottom: 6 };
 const primaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#2563eb', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' };
 const secondaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#e5e7eb', color: '#111827', border: 'none', fontWeight: 600, cursor: 'pointer' };
+const dangerBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#dc2626', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' };

@@ -173,6 +173,9 @@ def list_audit_events(
 
     stmt = select(AuditEvent)
 
+    # Filter to only user-initiated actions (exclude robot/system actions)
+    stmt = stmt.where(AuditEvent.actor_user_id.isnot(None))
+
     # time window
     start = from_time or from_ts
     end = to_time or to_ts
@@ -228,6 +231,9 @@ def get_audit_event(event_id: int, session: Session = Depends(get_session), user
     # permission enforced by dependency
     evt = session.get(AuditEvent, event_id)
     if not evt:
+        raise HTTPException(status_code=404, detail="Audit event not found")
+    # Ensure only user-initiated actions are accessible
+    if evt.actor_user_id is None:
         raise HTTPException(status_code=404, detail="Audit event not found")
     return {
         "id": evt.id,

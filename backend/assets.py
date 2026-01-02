@@ -52,10 +52,16 @@ class AssetBase:
 def now_iso():
     return datetime.now().isoformat(timespec='seconds')
 
+def _is_provisioning_asset(a: Asset) -> bool:
+    name = (a.name or "").lower()
+    desc = (a.description or "").lower()
+    return name.startswith("robot_") or "credential for robot" in desc
+
+
 @router.get("/", dependencies=[Depends(get_current_user), Depends(require_permission("assets", "view"))])
 def list_assets(search: Optional[str] = None, session=Depends(get_session)):
     stmt = select(Asset)
-    assets = session.exec(stmt).all()
+    assets = [a for a in session.exec(stmt).all() if not _is_provisioning_asset(a)]
     if search:
         s = search.lower()
         assets = [a for a in assets if s in a.name.lower() or (a.description and s in a.description.lower())]
@@ -66,6 +72,8 @@ def list_assets(search: Optional[str] = None, session=Depends(get_session)):
 def get_asset(asset_id: int, session=Depends(get_session)):
     a = session.exec(select(Asset).where(Asset.id == asset_id)).first()
     if not a:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if _is_provisioning_asset(a):
         raise HTTPException(status_code=404, detail="Asset not found")
     return asset_to_out(a)
 

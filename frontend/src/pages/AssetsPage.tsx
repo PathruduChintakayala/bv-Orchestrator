@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import type { Asset, AssetType } from "../types/assets";
 import { fetchAssets, createAsset, updateAsset, deleteAsset } from "../api/assets";
 
@@ -24,6 +25,19 @@ export default function AssetsPage() {
   const [canCreate, setCanCreate] = useState(true);
   const [canEdit, setCanEdit] = useState(true);
   const [canDelete, setCanDelete] = useState(true);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.action-menu')) {
+        setMenuOpenId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -86,10 +100,45 @@ export default function AssetsPage() {
     if (!confirm("Delete this asset?")) return;
     try {
       await deleteAsset(id);
+      setSelected(prev => prev.filter(x => x !== id));
       await load(search);
     } catch (e: any) {
       alert(e.message || "Delete failed");
     }
+  }
+
+  function toggleSelect(id: number) {
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
+  function toggleSelectAll() {
+    if (selected.length === assets.length) {
+      setSelected([]);
+    } else {
+      setSelected(assets.map(a => a.id));
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selected.length === 0) return;
+    if (!confirm(`Delete ${selected.length} selected asset(s)? This action cannot be undone.`)) return;
+    let successCount = 0;
+    let errorMessages: string[] = [];
+    for (const id of selected) {
+      try {
+        await deleteAsset(id);
+        successCount++;
+      } catch (e: any) {
+        errorMessages.push(`Failed to delete asset ${id}: ${e.message || 'Unknown error'}`);
+      }
+    }
+    if (errorMessages.length > 0) {
+      alert(`Deleted ${successCount} asset(s).\n\nErrors:\n${errorMessages.join('\n')}`);
+    } else {
+      alert(`Successfully deleted ${successCount} asset(s).`);
+    }
+    setSelected([]);
+    await load(search);
   }
 
   return (
@@ -108,34 +157,57 @@ export default function AssetsPage() {
 
         <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
         {loading ? <p>Loading…</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
-                <th style={{ paddingBottom: 8 }}>Name</th>
-                <th style={{ paddingBottom: 8 }}>Type</th>
-                <th style={{ paddingBottom: 8 }}>Value</th>
-                <th style={{ paddingBottom: 8 }}>Description</th>
-                <th style={{ paddingBottom: 8 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {assets.map(a => (
-                <tr key={a.id} style={{ fontSize: 14, color: '#111827' }}>
-                  <td style={{ padding: '6px 0' }}>{a.name}</td>
-                  <td style={{ padding: '6px 0' }}>{formatAssetType(a.type as AssetType)}</td>
-                  <td style={{ padding: '6px 0' }}>{a.type === 'secret' ? '••••••' : a.type === 'credential' ? (a.username || '') : a.value}</td>
-                  <td style={{ padding: '6px 0', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.description || ''}</td>
-                  <td style={{ padding: '6px 0' }}>
-                    <button style={{...secondaryBtn, opacity: canEdit ? 1 : 0.6, cursor: canEdit ? 'pointer' : 'not-allowed'}} onClick={()=>openEdit(a)} disabled={!canEdit}>Edit</button>{' '}
-                    <button style={{...dangerBtn, opacity: canDelete ? 1 : 0.6, cursor: canDelete ? 'pointer' : 'not-allowed'}} onClick={()=>handleDelete(a.id)} disabled={!canDelete}>Delete</button>
-                  </td>
+          <>
+            {selected.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
+                <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
+                <button onClick={handleBulkDelete} style={{...dangerBtn, opacity: canDelete ? 1 : 0.6, cursor: canDelete ? 'pointer' : 'not-allowed'}} disabled={!canDelete}>Delete</button>
+              </div>
+            )}
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ fontSize: 12, color: '#6b7280' }}>
+                  <th style={{ padding: '8px 12px', width: 40, textAlign: 'center' }}>
+                    <input type="checkbox" checked={selected.length === assets.length && assets.length > 0} onChange={toggleSelectAll} style={{ verticalAlign: 'middle' }} />
+                  </th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Name</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Type</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Value</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Description</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Actions</th>
                 </tr>
-              ))}
-              {assets.length === 0 && (
-                <tr><td colSpan={5} style={{ paddingTop: 12, color: '#6b7280' }}>No assets found</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {assets.map(a => (
+                  <tr key={a.id} style={{ fontSize: 14, color: '#111827' }}>
+                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                      <input type="checkbox" checked={selected.includes(a.id)} onChange={() => toggleSelect(a.id)} style={{ verticalAlign: 'middle' }} />
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{a.name}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{formatAssetType(a.type as AssetType)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{a.type === 'secret' ? '••••••' : a.type === 'credential' ? (a.username || '') : a.value}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.description || ''}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                      {(canEdit || canDelete) && (
+                        <ActionMenu
+                          open={menuOpenId === a.id}
+                          onToggle={() => setMenuOpenId(menuOpenId === a.id ? null : a.id)}
+                          onClose={() => setMenuOpenId(null)}
+                          actions={[
+                            ...(canEdit ? [{ label: "Edit", onClick: () => openEdit(a) }] as const : []),
+                            ...(canDelete ? [{ label: "Delete", tone: "danger" as const, onClick: () => handleDelete(a.id) }] as const : []),
+                          ]}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {assets.length === 0 && (
+                  <tr><td colSpan={6} style={{ padding: '8px 12px', textAlign: 'left', color: '#6b7280' }}>No assets found</td></tr>
+                )}
+              </tbody>
+            </table>
+          </>
         )}
         </div>
 
@@ -147,6 +219,111 @@ export default function AssetsPage() {
         />
         )}
       </div>
+    </div>
+  );
+}
+
+type MenuAction = { label: string; onClick: () => void; tone?: "danger"; disabled?: boolean };
+function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onToggle: () => void; onClose: () => void; actions: MenuAction[] }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node) && buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open, onClose]);
+
+  const menuStyle = useMemo(() => {
+    if (!open || !buttonRef.current) return {};
+    const rect = buttonRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const menuHeight = actions.length * 40 + 16; // estimate height
+    const menuWidth = 180;
+
+    let top = rect.bottom + 8;
+    let left = rect.right - menuWidth; // align right edge
+
+    // If not enough space below, flip above
+    if (top + menuHeight > viewportHeight && rect.top - menuHeight - 8 > 0) {
+      top = rect.top - menuHeight - 8;
+    }
+
+    // If not enough space on right, align left
+    if (left < 0) {
+      left = rect.left;
+    }
+
+    // Ensure within viewport
+    if (left + menuWidth > viewportWidth) {
+      left = viewportWidth - menuWidth - 8;
+    }
+
+    return { position: 'fixed' as const, top, left, zIndex: 1000 };
+  }, [open, actions.length]);
+
+  return (
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={onToggle}
+        style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
+      >
+        ⋮
+      </button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          style={{
+            ...menuStyle,
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
+            borderRadius: 8,
+            minWidth: 180,
+            overflow: "hidden",
+          }}
+        >
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              role="menuitem"
+              disabled={a.disabled}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                background: "transparent",
+                border: "none",
+                cursor: a.disabled ? "not-allowed" : "pointer",
+                color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+              }}
+              onClick={() => { if (!a.disabled) { a.onClick(); onClose(); } }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

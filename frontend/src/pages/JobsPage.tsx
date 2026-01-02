@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Job, JobStatus } from "../types/job";
 import { fetchJobs, createJob, cancelJob } from "../api/jobs";
 import { fetchProcesses } from "../api/processes";
-import { fetchRobots } from "../api/robots";
-import React from "react";
+import { fetchRobots } from "../api/robots";import { getProcessTypeLabel, getProcessTypeTone } from "../utils/processTypes";import React from "react";
 
 export default function JobsPage() {
   const [items, setItems] = useState<Job[]>([]);
@@ -20,7 +19,7 @@ export default function JobsPage() {
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   type FetchState<T> = { status: 'idle' | 'loading' | 'ready' | 'error'; data: T; error?: string };
   const [processesState, setProcessesState] = useState<FetchState<import('../types/processes').Process[]>>({ status: 'idle', data: [] });
   const [robotsState, setRobotsState] = useState<FetchState<import('../types/robot').Robot[]>>({ status: 'idle', data: [] });
@@ -90,7 +89,7 @@ export default function JobsPage() {
 
   async function handleTrigger(values: FormValues) {
     try {
-      const payload = { processId: values.processId!, robotId: values.robotId ?? null, parameters: null };
+      const payload = { processId: values.processId!, robotId: values.robotId ?? null, parameters: undefined };
       await createJob(payload);
       closeModal();
       await load();
@@ -123,7 +122,7 @@ export default function JobsPage() {
   }
 
   function runtimeLabel(j: Job) {
-    return j.process?.package?.isBvpackage ? "RPA" : "Agent";
+    return getProcessTypeLabel(j.process?.package?.isBvpackage ?? false)
   }
 
   function sourceLabel(j: Job) {
@@ -132,7 +131,7 @@ export default function JobsPage() {
   }
 
   function hostname(j: Job) {
-    return j.robot?.machineInfo || j.robot?.name || "-";
+    return j.robot?.machineName || j.robot?.machineInfo || j.robot?.name || "-";
   }
 
   function stateBadge(j: Job) {
@@ -283,7 +282,7 @@ export default function JobsPage() {
                     <td>
                       <div className="cell-primary">{j.process?.name || `Process ${j.processId}`}</div>
                     </td>
-                    <td><Badge tone={runtimeLabel(j) === 'RPA' ? 'blue' : 'slate'}>{runtimeLabel(j)}</Badge></td>
+                    <td><Badge tone={getProcessTypeTone(j.process?.package?.isBvpackage ?? false)}>{runtimeLabel(j)}</Badge></td>
                     <td>{stateBadge(j)}</td>
                     <td className="cell-secondary">{startedLabel(j)}</td>
                     <td className="cell-secondary">{endedLabel(j)}</td>
@@ -562,4 +561,3 @@ const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, bord
 const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBottom: 6 };
 const primaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#2563eb', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' };
 const secondaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#e5e7eb', color: '#111827', border: 'none', fontWeight: 600, cursor: 'pointer' };
-const dangerBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#dc2626', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' };

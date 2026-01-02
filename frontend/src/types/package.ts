@@ -9,4 +9,7 @@ export interface Package {
   scripts: string[];
   createdAt: string;
   updatedAt: string;
+  downloadUrl?: string | null;
+  downloadAvailable?: boolean;
+  sizeBytes?: number | null;
 }
