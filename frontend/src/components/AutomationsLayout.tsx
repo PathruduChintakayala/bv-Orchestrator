@@ -9,7 +9,7 @@ const tabs = [
 
 export default function AutomationsLayout({ active, children }: { active: 'processes' | 'jobs' | 'triggers' | 'logs'; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 6px rgba(0,0,0,0.08)', padding: '10px 12px' }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {tabs.map(t => {
