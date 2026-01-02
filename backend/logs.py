@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 
 from backend.auth import get_current_user
 from backend.db import get_session
-from backend.models import JobExecutionLog, Job, Process, Robot, Machine
+from backend.models import JobExecutionLog
 from backend.permissions import require_permission
 
 router = APIRouter(prefix="/logs", tags=["logs"])
@@ -33,11 +33,7 @@ def _build_filters(
     host_identity: Optional[str],
     search: Optional[str],
 ):
-    stmt = select(JobExecutionLog, Job, Process, Robot, Machine)
-    stmt = stmt.join(Job, Job.execution_id == JobExecutionLog.job_execution_id, isouter=True)
-    stmt = stmt.join(Process, Process.id == Job.process_id, isouter=True)
-    stmt = stmt.join(Robot, Robot.id == Job.robot_id, isouter=True)
-    stmt = stmt.join(Machine, Machine.id == Robot.machine_id, isouter=True)
+    stmt = select(JobExecutionLog)
 
     if level and level.upper() != "ALL":
         stmt = stmt.where(JobExecutionLog.level == level.upper())
@@ -46,11 +42,11 @@ def _build_filters(
     if to_ts:
         stmt = stmt.where(JobExecutionLog.timestamp <= _parse_dt(to_ts))
     if process_id:
-        stmt = stmt.where(Job.process_id == process_id)
+        stmt = stmt.where(JobExecutionLog.process_id == process_id)
     if machine_id:
-        stmt = stmt.where(Machine.id == machine_id)
+        stmt = stmt.where(JobExecutionLog.machine_id == machine_id)
     if host_identity:
-        stmt = stmt.where((Machine.machine_info == host_identity) | (Robot.machine_info == host_identity))
+        stmt = stmt.where(JobExecutionLog.host_identity == host_identity)
     if search:
         like = f"%{search}%"
         stmt = stmt.where(JobExecutionLog.message.ilike(like))
@@ -97,22 +93,17 @@ def list_logs(
     rows = session.exec(stmt).all()
 
     items = []
-    for log_row, job, proc, robot, machine in rows:
-        host_identity_val = None
-        if machine and getattr(machine, "machine_info", None):
-            host_identity_val = machine.machine_info
-        elif robot and getattr(robot, "machine_info", None):
-            host_identity_val = robot.machine_info
+    for row in rows:
         items.append(
             {
-                "timestamp": log_row.timestamp.isoformat(),
-                "level": log_row.level,
-                "message": log_row.message,
-                "processId": getattr(proc, "id", None),
-                "processName": getattr(proc, "name", None),
-                "machineId": getattr(machine, "id", None),
-                "machineName": getattr(machine, "name", None),
-                "hostIdentity": host_identity_val,
+                "timestamp": row.timestamp.isoformat(),
+                "level": row.level,
+                "message": row.message,
+                "processId": row.process_id,
+                "processName": row.process_name,
+                "machineId": row.machine_id,
+                "machineName": row.machine_name,
+                "hostIdentity": row.host_identity,
             }
         )
 
