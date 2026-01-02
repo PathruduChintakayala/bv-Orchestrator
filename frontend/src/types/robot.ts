@@ -7,6 +7,7 @@ export interface Robot {
   machineId?: number | null;
   machineName?: string | null;
   machineInfo?: string | null;
+  username?: string | null;
   lastHeartbeat?: string | null;
   currentJobId?: number | null;
   createdAt: string;

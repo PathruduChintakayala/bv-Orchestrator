@@ -49,14 +49,31 @@ export default function RobotsPage() {
   async function handleSave(values: FormValues) {
     try {
       if (editing) {
-        await updateRobot(editing.id, { status: values.status, machineId: values.machineId ?? null, machineInfo: values.machineInfo || null });
+        const updatePayload: any = {};
+        if (values.name !== undefined && values.name !== editing.name) {
+          updatePayload.name = values.name;
+        }
+        const u = (values.credentialUsername || '').trim();
+        const p = (values.credentialPassword || '').trim();
+        if (u || p) {
+          if (!u || !p) {
+            alert('Provide both username and password, or leave both empty');
+            return;
+          }
+          updatePayload.credential = { username: u, password: p };
+        }
+        // machineInfo is optional, only send if provided
+        if (values.machineInfo !== undefined) {
+          updatePayload.machineInfo = values.machineInfo || null;
+        }
+        await updateRobot(editing.id, updatePayload);
       } else {
         const u = (values.credentialUsername || '').trim();
         const p = (values.credentialPassword || '').trim();
         await createRobot({
           name: values.name,
           machineId: values.machineId ?? undefined,
-          machineInfo: values.machineInfo || undefined,
+          machineInfo: values.machineInfo || undefined,  // Optional
           credential: u && p ? { username: u, password: p } : undefined,
         });
       }
@@ -150,7 +167,7 @@ function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCa
     status: initial?.status || "offline",
     machineInfo: initial?.machineInfo || "",
     machineId: initial?.machineId ?? null,
-    credentialUsername: "",
+    credentialUsername: initial?.username || "",
     credentialPassword: "",
   });
   const [saving, setSaving] = useState(false);
@@ -181,7 +198,16 @@ function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCa
 
   async function submit() {
     if (!initial && !form.name.trim()) { alert('Name is required'); return; }
+    if (initial && !form.name.trim()) { alert('Name is required'); return; }
     if (!initial) {
+      const u = (form.credentialUsername || '').trim();
+      const p = (form.credentialPassword || '').trim();
+      if ((u && !p) || (!u && p)) {
+        alert('Provide both username and password, or leave both empty');
+        return;
+      }
+    }
+    if (initial) {
       const u = (form.credentialUsername || '').trim();
       const p = (form.credentialPassword || '').trim();
       if ((u && !p) || (!u && p)) {
@@ -202,12 +228,10 @@ function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCa
       <div style={{ width: '100%', maxWidth: 600, background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>{initial ? 'Edit Robot' : 'New Robot'}</h2>
         <div style={{ display: 'grid', gap: 10 }}>
-          {!initial && (
-            <label>
-              <div style={label}>Name</div>
-              <input name="name" value={form.name} onChange={handleChange} style={input} />
-            </label>
-          )}
+          <label>
+            <div style={label}>Name</div>
+            <input name="name" value={form.name} onChange={handleChange} style={input} />
+          </label>
           {!initial && (
             <label>
               <div style={label}>Machine</div>
@@ -230,28 +254,24 @@ function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCa
             </label>
           )}
           <label>
-            <div style={label}>Status</div>
-            <select name="status" value={form.status} onChange={handleChange} style={input}>
+            <div style={label}>Status <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 'normal' }}>(read-only)</span></div>
+            <select name="status" value={form.status} onChange={handleChange} style={input} disabled>
               {(['offline','online'] as RobotStatus[]).map(s=> <option key={s} value={s}>{s}</option>)}
             </select>
           </label>
           <label>
-            <div style={label}>Machine Info</div>
+            <div style={label}>Machine Info <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 'normal' }}>(optional)</span></div>
             <input name="machineInfo" value={form.machineInfo || ''} onChange={handleChange} style={input} />
           </label>
-          {!initial && (
-            <>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>Unattended credentials (optional)</div>
-              <label>
-                <div style={label}>Username</div>
-                <input name="credentialUsername" value={form.credentialUsername || ''} onChange={handleChange} style={input} />
-              </label>
-              <label>
-                <div style={label}>Password</div>
-                <input name="credentialPassword" type="password" value={form.credentialPassword || ''} onChange={handleChange} style={input} />
-              </label>
-            </>
-          )}
+          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Unattended credentials {initial ? '(leave password blank to keep current)' : '(optional)'}</div>
+          <label>
+            <div style={label}>Username</div>
+            <input name="credentialUsername" value={form.credentialUsername || ''} onChange={handleChange} style={input} />
+          </label>
+          <label>
+            <div style={label}>Password</div>
+            <input name="credentialPassword" type="password" value={form.credentialPassword || ''} onChange={handleChange} style={input} placeholder={initial ? 'Leave blank to keep current' : ''} />
+          </label>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
@@ -316,13 +336,16 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
   }, [open, actions.length]);
 
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
+    <div className="action-menu" style={{ position: "relative", display: "inline-block" }}>
       <button
         ref={buttonRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={onToggle}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
         style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
       >
         ⋮
@@ -330,6 +353,7 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
       {open && createPortal(
         <div
           ref={menuRef}
+          className="action-menu"
           role="menu"
           style={{
             ...menuStyle,
@@ -339,9 +363,12 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
             borderRadius: 8,
             minWidth: 180,
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
           }}
+          onClick={(e) => e.stopPropagation()}
         >
-          {actions.map((a) => (
+          {actions.map((a, index) => (
             <button
               key={a.label}
               role="menuitem"
@@ -352,10 +379,26 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
                 padding: "10px 12px",
                 background: "transparent",
                 border: "none",
+                borderBottom: index < actions.length - 1 ? "1px solid #e5e7eb" : "none",
                 cursor: a.disabled ? "not-allowed" : "pointer",
                 color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+                display: "block",
               }}
-              onClick={() => { if (!a.disabled) { a.onClick(); onClose(); } }}
+              onMouseEnter={(e) => {
+                if (!a.disabled) {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!a.disabled) {
+                  a.onClick();
+                  onClose();
+                }
+              }}
             >
               {a.label}
             </button>
@@ -380,4 +423,3 @@ const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, bord
 const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBottom: 6 };
 const primaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#2563eb', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' };
 const secondaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#e5e7eb', color: '#111827', border: 'none', fontWeight: 600, cursor: 'pointer' };
-const dangerBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#dc2626', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' };

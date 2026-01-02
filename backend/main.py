@@ -31,7 +31,13 @@ from backend.trigger_scheduler import scheduler
 from backend.models import User
 from backend.auth import SECRET_KEY, ALGORITHM
 
+from backend.websockets import sio
+import socketio
+
 app = FastAPI()
+
+# Wrap app with Socket.io ASGI app
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
 # Adjust origins as needed (use specific domains in real projects)
 origins = [
@@ -85,9 +91,11 @@ async def sdk_token_guard(request, call_next):
 def read_root():
     return {"message": "Hello FastAPI!"}
 
-# Initialize DB and seed admin at startup
+from backend.logging_utils import backend_logger
+
 @app.on_event("startup")
 def on_startup():
+    backend_logger.info("Starting BV Orchestrator")
     init_db()
     with Session(engine) as session:
         ensure_admin_user(session)

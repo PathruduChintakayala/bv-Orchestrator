@@ -86,7 +86,11 @@ def add_job_execution_log(
             host_name = machine.name
             machine_id = machine.id
             machine_name = machine.name
-    if current_robot.credential_asset_id:
+    # Use username from robot table as host_identity (preferred)
+    if current_robot.username:
+        host_identity = current_robot.username
+    # Fallback to credential_asset_id for backward compatibility
+    elif current_robot.credential_asset_id:
         asset = session.exec(select(Asset).where(Asset.id == current_robot.credential_asset_id)).first()
         if asset and asset.type == "credential":
             try:

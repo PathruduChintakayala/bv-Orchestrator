@@ -48,7 +48,7 @@ export async function createRobot(payload: {
   return toCamel(await res.json()) as Robot;
 }
 
-export async function updateRobot(id: number, payload: { status?: RobotStatus; machineId?: number | null; machineInfo?: string | null }): Promise<Robot> {
+export async function updateRobot(id: number, payload: { name?: string; status?: RobotStatus; machineId?: number | null; machineInfo?: string | null; credential?: { username: string; password: string } }): Promise<Robot> {
   const res = await fetch(`/api/robots/${id}`, { method: "PUT", headers: authHeaders(), body: JSON.stringify(toSnake(payload as any)) });
   if (!res.ok) throw new Error(await res.text());
   return toCamel(await res.json()) as Robot;

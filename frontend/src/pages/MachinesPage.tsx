@@ -609,13 +609,16 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
   }, [open, actions.length]);
 
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
+    <div className="action-menu" style={{ position: "relative", display: "inline-block" }}>
       <button
         ref={buttonRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={onToggle}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
         style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
       >
         ⋮
@@ -623,6 +626,7 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
       {open && createPortal(
         <div
           ref={menuRef}
+          className="action-menu"
           role="menu"
           style={{
             ...menuStyle,
@@ -632,9 +636,12 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
             borderRadius: 8,
             minWidth: 180,
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
           }}
+          onClick={(e) => e.stopPropagation()}
         >
-          {actions.map((a) => (
+          {actions.map((a, index) => (
             <button
               key={a.label}
               role="menuitem"
@@ -645,10 +652,26 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
                 padding: "10px 12px",
                 background: "transparent",
                 border: "none",
+                borderBottom: index < actions.length - 1 ? "1px solid #e5e7eb" : "none",
                 cursor: a.disabled ? "not-allowed" : "pointer",
                 color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+                display: "block",
               }}
-              onClick={() => { if (!a.disabled) { a.onClick(); onClose(); } }}
+              onMouseEnter={(e) => {
+                if (!a.disabled) {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!a.disabled) {
+                  a.onClick();
+                  onClose();
+                }
+              }}
             >
               {a.label}
             </button>
