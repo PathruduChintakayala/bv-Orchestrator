@@ -144,10 +144,13 @@ function Router() {
   if (route.startsWith('#/jobs')) return renderProtected(<JobsPage />)
   if (route === '#/manage-access') return renderProtected(<ManageAccessPage />)
   if (route === '#/audit') return renderProtected(<AuditPage />)
-  if (route === '#/automations/processes') return renderProtected(<AutomationsLayout active="processes"><ProcessesPage /></AutomationsLayout>)
-  if (route === '#/automations/jobs') return renderProtected(<AutomationsLayout active="jobs"><JobsPage /></AutomationsLayout>)
-  if (route === '#/automations/triggers') return renderProtected(<AutomationsLayout active="triggers"><TriggersPage /></AutomationsLayout>)
-  if (route === '#/automations/logs') return renderProtected(<AutomationsLayout active="logs"><LogsPage /></AutomationsLayout>)
+  if (route.startsWith('#/automations/processes')) return renderProtected(<AutomationsLayout active="processes"><ProcessesPage /></AutomationsLayout>)
+  if (route.startsWith('#/automations/jobs')) return renderProtected(<AutomationsLayout active="jobs"><JobsPage /></AutomationsLayout>)
+  if (route.startsWith('#/automations/triggers')) return renderProtected(<AutomationsLayout active="triggers"><TriggersPage /></AutomationsLayout>)
+  if (route.startsWith('#/automations/logs')) {
+    const activeTab = route.includes('jobId=') ? 'jobs' : 'logs'
+    return renderProtected(<AutomationsLayout active={activeTab as any}><LogsPage /></AutomationsLayout>)
+  }
   if (route === '#/settings') return renderProtected(<SettingsPage />)
   if (route === '#/queues') return renderProtected(<QueuesPage />)
   if (route.startsWith('#/queue-items')) return renderProtected(<QueueItemsPage />)

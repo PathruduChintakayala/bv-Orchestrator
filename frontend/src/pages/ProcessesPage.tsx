@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { Process } from "../types/processes";
 import { fetchProcesses, createProcess, updateProcess, deleteProcess } from "../api/processes";
 import { fetchPackages } from "../api/packages";
+import TriggerModal from "../components/TriggerModal";
 
 export default function ProcessesPage() {
   const [items, setItems] = useState<Process[]>([]);
@@ -11,6 +12,10 @@ export default function ProcessesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Process | null>(null);
   const [packages, setPackages] = useState<import('../types/package').Package[]>([]);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+  const [pendingSearch, setPendingSearch] = useState("");
+  const [triggerModalOpen, setTriggerModalOpen] = useState(false);
+  const [triggerProcessId, setTriggerProcessId] = useState<number | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -18,6 +23,17 @@ export default function ProcessesPage() {
     load();
     // preload active packages for selection
     fetchPackages({ activeOnly: true }).then(setPackages).catch(()=>{});
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.action-menu')) {
+        setMenuOpenId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   async function load(s?: string) {
@@ -37,11 +53,18 @@ export default function ProcessesPage() {
   function openEdit(p: Process) { setEditing(p); setModalOpen(true); }
   function closeModal() { setModalOpen(false); setEditing(null); }
 
+  function handleSearchSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
+    setSearch(pendingSearch.trim());
+    load(pendingSearch.trim());
+  }
+
   async function handleSave(values: FormValues) {
     try {
       const payload: any = {
         name: values.name,
         isActive: values.isActive,
+        description: values.description,
       };
 
       if (values.packageId) {
@@ -76,62 +99,232 @@ export default function ProcessesPage() {
     }
   }
 
-  return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>Processes</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search processes…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-          <button onClick={()=>load(search)} style={secondaryBtn}>Search</button>
-          <button onClick={()=>load(search)} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
-          <button onClick={openNew} style={primaryBtn}>New Process</button>
-        </div>
-      </div>
+  function typeLabel(p: Process) {
+    return p.package?.isBvpackage ? "RPA" : "Agent";
+  }
 
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
-        {loading ? <p>Loading…</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Script</th>
-                <th>Active</th>
-                <th data-align="right">Version</th>
-                <th>Updated</th>
-                <th data-type="actions">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(p => (
-                <tr key={p.id}>
-                  <td>{p.name}</td>
-                  <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {p.package?.isBvpackage ? (p.entrypointName ? `Entrypoint: ${p.entrypointName}` : 'Entrypoint: (missing)') : p.scriptPath}
-                  </td>
-                  <td>{p.isActive ? 'Yes' : 'No'}</td>
-                  <td data-align="right">{p.version}</td>
-                  <td>{new Date(p.updatedAt).toLocaleString()}</td>
-                  <td data-type="actions">
-                    <button style={secondaryBtn} onClick={()=>openEdit(p)}>Edit</button>{' '}
-                    <button style={dangerBtn} onClick={()=>handleDelete(p.id)}>Delete</button>
-                  </td>
+  function entrypointLabel(p: Process) {
+    if (p.package?.isBvpackage) {
+      if (p.entrypointName) {
+        // Remove file extension
+        return p.entrypointName.replace(/\.[^/.]+$/, "");
+      }
+      return "Entrypoint missing";
+    }
+    if (p.scriptPath) {
+      // Extract filename and remove extension
+      const filename = p.scriptPath.split(/[/\\]/).pop() || p.scriptPath;
+      return filename.replace(/\.[^/.]+$/, "");
+    }
+    return "Script not set";
+  }
+
+  function lastUpdated(p: Process) {
+    try { return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(p.updatedAt)); }
+    catch { return p.updatedAt; }
+  }
+
+  function goToJobsTrigger(processId: number) {
+    window.location.hash = `#/automations/jobs?processId=${processId}&trigger=true`;
+  }
+
+  function goToJobs(processId: number) {
+    window.location.hash = `#/automations/jobs?processId=${processId}`;
+  }
+
+  function openTriggerForProcess(processId: number) {
+    // Open the shared "New Trigger" modal without leaving Processes
+    setTriggerProcessId(processId);
+    setTriggerModalOpen(true);
+  }
+
+  function goToLogs(processId: number) {
+    window.location.hash = `#/automations/logs?processId=${processId}`;
+  }
+
+  return (
+    <div style={{ padding: 16 }}>
+      <div className="page-shell processes-shell" style={{ gap: 12 }}>
+        <header className="page-header surface-card">
+          <div>
+            <h1 className="page-title">Processes</h1>
+          </div>
+          <div className="page-actions">
+            <form className="search-form" onSubmit={handleSearchSubmit} role="search">
+              <span className="search-icon" aria-hidden>🔍</span>
+              <input
+                value={pendingSearch}
+                onChange={(e) => setPendingSearch(e.target.value)}
+                placeholder="Search processes"
+                className="search-input"
+                aria-label="Search processes"
+              />
+              <button type="submit" className="btn btn-secondary">Search</button>
+            </form>
+            <div className="action-buttons">
+              <button onClick={() => load(search)} className="btn btn-ghost" aria-label="Refresh list">↻</button>
+              <button onClick={openNew} className="btn btn-primary">New Process</button>
+            </div>
+          </div>
+        </header>
+
+        <div className="surface-card">
+          {error && <div className="alert alert-error" role="alert">{error}</div>}
+          <div className="table-wrapper" role="region" aria-live="polite">
+            <table className="processes-table" aria-busy={loading}>
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Version</th>
+                  <th scope="col">Entry Point</th>
+                  <th scope="col">Description</th>
+                  <th scope="col">Last Updated</th>
+                  <th scope="col" className="actions-col">Actions</th>
                 </tr>
-              ))}
-              {items.length === 0 && (
-                <tr><td colSpan={6} style={{ paddingTop: 12, color: '#6b7280' }}>No processes found</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {loading && SkeletonRows(6)}
+                {!loading && items.map((p) => (
+                  <tr key={p.id} className="data-row">
+                    <td>
+                      <div className="cell-primary">{p.name}</div>
+                    </td>
+                    <td><Badge tone={p.package?.isBvpackage ? "blue" : "slate"}>{typeLabel(p)}</Badge></td>
+                    <td><span className="mono">{p.package?.version || "N/A"}</span></td>
+                    <td>
+                      <div className="cell-primary truncate" title={entrypointLabel(p)}>{entrypointLabel(p)}</div>
+                    </td>
+                    <td>
+                      <div className="cell-primary truncate" title={p.description}>{p.description || ""}</div>
+                    </td>
+                    <td>{lastUpdated(p)}</td>
+                    <td className="actions-col">
+                      <button onClick={() => goToJobsTrigger(p.id)} className="btn btn-ghost icon-button" title="Run job" aria-label="Run job">
+                        ▶
+                      </button>
+                      <ActionMenu
+                        open={menuOpenId === p.id}
+                        onToggle={() => setMenuOpenId(menuOpenId === p.id ? null : p.id)}
+                        onClose={() => setMenuOpenId(null)}
+                        actions={[
+                          { label: "Edit", onClick: () => openEdit(p) },
+                          { label: "View Jobs", onClick: () => goToJobs(p.id) },
+                          { label: "Add Trigger", onClick: () => openTriggerForProcess(p.id) },
+                          { label: "View Logs", onClick: () => goToLogs(p.id) },
+                          { label: "Delete", tone: "danger", onClick: () => handleDelete(p.id) },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                ))}
+                {!loading && items.length === 0 && (
+                  <tr>
+                    <td colSpan={7}>
+                      <div className="empty-state">
+                        <div>
+                          <p className="empty-title">No processes yet</p>
+                          <p className="empty-body">Create your first process to orchestrate robots and jobs.</p>
+                        </div>
+                        <button onClick={openNew} className="btn btn-primary">Create process</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {triggerModalOpen && (
+          <TriggerModal
+            open={triggerModalOpen}
+            onClose={() => { setTriggerModalOpen(false); setTriggerProcessId(null); }}
+            onCreated={() => { setTriggerProcessId(null); }}
+            defaultProcessId={triggerProcessId ?? undefined}
+            lockProcess
+            processes={items}
+          />
+        )}
+
+        {modalOpen && (
+          <ProcessModal
+            initial={editing || null}
+            onCancel={closeModal}
+            onSave={handleSave}
+            packages={packages}
+          />
         )}
       </div>
+    </div>
+  );
+}
 
-      {modalOpen && (
-        <ProcessModal
-          initial={editing || null}
-          onCancel={closeModal}
-          onSave={handleSave}
-          packages={packages}
-        />
+function SkeletonRows(count: number) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, idx) => (
+        <tr key={`s-${idx}`} className="skeleton-row">
+          <td><div className="skeleton shimmer" style={{ width: "140px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "72px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "48px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "180px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "120px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "120px" }} /></td>
+          <td className="actions-col"><div className="skeleton shimmer" style={{ width: "32px", marginLeft: "auto" }} /></td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
+function Badge({ tone = "slate", children }: { tone?: "slate" | "blue"; children: React.ReactNode }) {
+  return <span className={`badge badge-${tone}`}>{children}</span>;
+}
+
+function StatusBadge({ active }: { active: boolean }) {
+  return (
+    <span className={`status-badge ${active ? "on" : "off"}`}>
+      <span className="status-dot" aria-hidden />
+      {active ? "Active" : "Inactive"}
+    </span>
+  );
+}
+
+type MenuAction = { label: string; onClick: () => void; tone?: "danger" };
+function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onToggle: () => void; onClose: () => void; actions: MenuAction[] }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="action-menu">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="btn btn-ghost icon-button"
+      >
+        ⋮
+      </button>
+      {open && (
+        <div className="menu-panel" role="menu">
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              role="menuitem"
+              className={`menu-item ${a.tone === "danger" ? "danger" : ""}`}
+              onClick={() => { a.onClick(); onClose(); }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -168,6 +361,7 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
       entrypointName: initial?.entrypointName || "",
       packageId: initial?.packageId ?? undefined,
       isBv: !!selectedPackage?.isBvpackage,
+      description: initial?.description || "",
     });
 
     useEffect(() => {
@@ -191,6 +385,10 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
 
     function handleScriptPathChange(val: string) {
       setForm((prev) => ({ ...prev, scriptPath: val }));
+    }
+
+    function handleDescriptionChange(val: string) {
+      setForm((prev) => ({ ...prev, description: val }));
     }
 
     function toggleActive() {
@@ -252,6 +450,11 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
             <label>
               <div style={label}>Name</div>
               <input name="name" value={form.name} onChange={(e) => handleNameChange(e.target.value)} style={input} />
+            </label>
+
+            <label>
+              <div style={label}>Description</div>
+              <input name="description" value={form.description} onChange={(e) => handleDescriptionChange(e.target.value)} style={input} />
             </label>
 
             <div style={{ display: 'grid', gap: 8 }}>
@@ -377,6 +580,7 @@ type FormValues = {
   entrypointName: string;
   isActive: boolean;
   isBv: boolean;
+  description: string;
 };
 
 const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', width: '100%', maxWidth: '100%', boxSizing: 'border-box' };

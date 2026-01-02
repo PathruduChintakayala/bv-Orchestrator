@@ -46,6 +46,39 @@ export async function disableTrigger(id: string): Promise<Trigger> {
   return toCamel(await res.json()) as Trigger;
 }
 
+export async function updateTrigger(id: string, payload: {
+  name?: string;
+  type?: 'TIME' | 'QUEUE';
+  processId?: number;
+  enabled?: boolean;
+  robotId?: number | null;
+  cronExpression?: string | null;
+  timezone?: string | null;
+  queueId?: number | null;
+  batchSize?: number | null;
+  pollingInterval?: number | null;
+}): Promise<Trigger> {
+  const body: any = {};
+  if (payload.name !== undefined) body.name = payload.name;
+  if (payload.type !== undefined) body.type = payload.type;
+  if (payload.processId !== undefined) body.process_id = payload.processId;
+  if (payload.enabled !== undefined) body.enabled = payload.enabled;
+  if (payload.robotId !== undefined) body.robot_id = payload.robotId;
+  if (payload.cronExpression !== undefined) body.cron_expression = payload.cronExpression;
+  if (payload.timezone !== undefined) body.timezone = payload.timezone;
+  if (payload.queueId !== undefined) body.queue_id = payload.queueId;
+  if (payload.batchSize !== undefined) body.batch_size = payload.batchSize;
+  if (payload.pollingInterval !== undefined) body.polling_interval = payload.pollingInterval;
+  const res = await fetch(`/api/triggers/${id}`, { method: "PUT", headers: authHeaders(), body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(await readError(res));
+  return toCamel(await res.json()) as Trigger;
+}
+
+export async function deleteTrigger(id: string): Promise<void> {
+  const res = await fetch(`/api/triggers/${id}`, { method: "DELETE", headers: authHeaders() });
+  if (!res.ok) throw new Error(await readError(res));
+}
+
 export async function createTrigger(payload: {
   name: string;
   type: 'TIME' | 'QUEUE';

@@ -19,7 +19,7 @@ const ranges = [
 
 type Scope = 'global' | 'job'
 
-export default function LogsView({ scope, jobExecutionId, jobId }: { scope: Scope; jobExecutionId?: string; jobId?: number }) {
+export default function LogsView({ scope, jobExecutionId, jobId, initialProcessId }: { scope: Scope; jobExecutionId?: string; jobId?: number; initialProcessId?: number }) {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [processes, setProcesses] = useState<Process[]>([])
   const [machines, setMachines] = useState<Machine[]>([])
@@ -38,8 +38,14 @@ export default function LogsView({ scope, jobExecutionId, jobId }: { scope: Scop
   const [offset, setOffset] = useState(0)
   const [order, setOrder] = useState<'asc' | 'desc'>('desc')
   const [job, setJob] = useState<Job | null>(null)
+  const [showFilters, setShowFilters] = useState(true)
 
   useEffect(() => { void loadMeta() }, [])
+  useEffect(() => {
+    if (initialProcessId !== undefined) {
+      setProcessId(initialProcessId)
+    }
+  }, [initialProcessId])
   useEffect(() => {
     if (scope === 'job' && jobId) {
       void loadJob(jobId)
@@ -221,27 +227,29 @@ export default function LogsView({ scope, jobExecutionId, jobId }: { scope: Scop
   const visibleLogs = scope === 'job' ? logs.slice(offset, offset + limit) : logs
 
   return (
-    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827', margin: 0 }}>Logs</h1>
-          {scope === 'job' && job && (
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', color: '#4b5563', fontSize: 13 }}>
-              <span style={{ fontWeight: 600, color: '#111827' }}>Job #{job.id}</span>
-              <span>•</span>
-              <span>{job.process?.name || `Process ${job.processId}`}</span>
-              <span>•</span>
-              <span>Started {job.startedAt ? new Date(job.startedAt).toLocaleString() : 'N/A'}</span>
-            </div>
-          )}
+    <div style={{ padding: 16 }}>
+      <div className="page-shell" style={{ gap: 12 }}>
+        <div className="surface-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827', margin: 0 }}>Logs</h1>
+            {scope === 'job' && job && (
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', color: '#4b5563', fontSize: 13 }}>
+                <span style={{ fontWeight: 600, color: '#111827' }}>Job #{job.id}</span>
+                <span>•</span>
+                <span>{job.process?.name || `Process ${job.processId}`}</span>
+                <span>•</span>
+                <span>Started {job.startedAt ? new Date(job.startedAt).toLocaleString() : 'N/A'}</span>
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => { setOffset(0); void load() }} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
+            <button onClick={() => setShowFilters(!showFilters)} style={{ ...secondaryBtn, padding: '10px 14px' }}>{showFilters ? 'Hide Filters ▾' : 'Show Filters ▸'}</button>
+            <button onClick={handleExport} style={primaryBtn}>Export CSV</button>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => { setOffset(0); void load() }} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
-          <button onClick={handleExport} style={primaryBtn}>Export CSV</button>
-        </div>
-      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, background: '#fff', padding: 12, borderRadius: 12, boxShadow: '0 6px 18px rgba(0,0,0,0.05)' }}>
+        <div className="surface-card" style={{ display: showFilters ? 'grid' : 'none', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, padding: 12 }}>
         <label style={label}>Search<input value={search} onChange={handleSearchChange} style={input} placeholder="Message contains" /></label>
         <label style={label}>Time range<select value={range} onChange={e => { setRange(e.target.value as any); setOffset(0) }} style={input}>
           {ranges.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -271,9 +279,9 @@ export default function LogsView({ scope, jobExecutionId, jobId }: { scope: Scop
           <option value="">All</option>
           {hostOptions.map(h => <option key={h} value={h}>{h}</option>)}
         </select></label>
-      </div>
+        </div>
 
-      <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 12 }}>
+        <div className="surface-card" style={{ padding: 12 }}>
         {loading ? <p>Loading…</p> : error ? <p style={{ color: '#dc2626' }}>{error}</p> : logs.length === 0 ? (
           <p style={{ color: '#6b7280', padding: 12 }}>No logs found. Try adjusting filters.</p>
         ) : (
@@ -313,6 +321,7 @@ export default function LogsView({ scope, jobExecutionId, jobId }: { scope: Scop
             </select>
             <button onClick={() => void load()} style={secondaryBtn}>Refresh</button>
           </div>
+        </div>
         </div>
       </div>
     </div>

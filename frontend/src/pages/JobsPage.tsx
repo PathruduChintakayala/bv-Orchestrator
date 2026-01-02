@@ -3,19 +3,31 @@ import type { Job, JobStatus } from "../types/job";
 import { fetchJobs, createJob, cancelJob } from "../api/jobs";
 import { fetchProcesses } from "../api/processes";
 import { fetchRobots } from "../api/robots";
+import React from "react";
 
 export default function JobsPage() {
   const [items, setItems] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<JobStatus | "">("");
+  const [processId, setProcessId] = useState<number | undefined>(undefined);
+  const [search, setSearch] = useState("");
+  const [runtimeType, setRuntimeType] = useState<string>("");
+  const [source, setSource] = useState<string>("");
+  const [timeRange, setTimeRange] = useState<string>("24h");
+  const [sortBy, setSortBy] = useState<"started" | "ended" | "status" | "process" | "id">("started");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   type FetchState<T> = { status: 'idle' | 'loading' | 'ready' | 'error'; data: T; error?: string };
   const [processesState, setProcessesState] = useState<FetchState<import('../types/processes').Process[]>>({ status: 'idle', data: [] });
   const [robotsState, setRobotsState] = useState<FetchState<import('../types/robot').Robot[]>>({ status: 'idle', data: [] });
 
   useEffect(() => {
-    load();
+    const pid = hydrateFromHash();
+    load(pid);
     setProcessesState({ status: 'loading', data: [] });
     setRobotsState({ status: 'loading', data: [] });
 
@@ -35,16 +47,41 @@ export default function JobsPage() {
     } catch {}
   }, []);
 
-  async function load() {
+  async function load(nextProcessId: number | undefined = processId) {
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchJobs(status ? { status } : undefined);
+      const data = await fetchJobs({ status: status || undefined, processId: nextProcessId });
       setItems(data);
     } catch (e: any) {
       setError(e.message || "Failed to load jobs");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function hydrateFromHash(): number | undefined {
+    try {
+      const hash = window.location.hash || '#/automations/jobs';
+      const url = new URL(hash.replace('#',''), 'http://localhost');
+      const pid = url.searchParams.get('processId');
+      const src = url.searchParams.get('source');
+      if (src) setSource(src);
+      if (pid) {
+        const num = Number(pid);
+        setProcessId(num);
+        return num;
+      }
+    } catch {/* ignore parse errors */}
+    return undefined;
+  }
+
+  function toggleSort(key: typeof sortBy) {
+    if (sortBy === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(key);
+      setSortDir('desc');
     }
   }
 
@@ -81,89 +118,271 @@ export default function JobsPage() {
       const rem = sec % 60;
       return `${min}m ${rem}s`;
     }
+    if (j.startedAt && !j.finishedAt) return "Running";
     return "-";
   }
 
-  return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>Jobs</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <select value={status} onChange={e=>setStatus(e.target.value as JobStatus | "")} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-            <option value="">All statuses</option>
-            {(['pending','running','completed','failed','canceled'] as JobStatus[]).map(s=> <option key={s} value={s}>{s}</option>)}
-          </select>
-          <button onClick={load} style={secondaryBtn}>Apply</button>
-          <button onClick={load} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
-          <button onClick={openNew} style={primaryBtn}>Trigger Job</button>
-        </div>
-      </div>
+  function runtimeLabel(j: Job) {
+    return j.process?.package?.isBvpackage ? "RPA" : "Agent";
+  }
 
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
-        {loading ? <p>Loading...</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
-                <th data-align="right" style={{ paddingBottom: 8 }}>ID</th>
-                <th style={{ paddingBottom: 8 }}>Process</th>
-                <th style={{ paddingBottom: 8 }}>Package</th>
-                <th style={{ paddingBottom: 8 }}>Robot</th>
-                <th style={{ paddingBottom: 8 }}>Status</th>
-                <th style={{ paddingBottom: 8 }}>Created</th>
-                <th style={{ paddingBottom: 8 }}>Duration</th>
-                <th data-type="actions" style={{ paddingBottom: 8 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(j => (
-                <tr key={j.id} style={{ fontSize: 14, color: '#111827' }}>
-                  <td data-align="right" style={{ padding: '6px 0' }}>{j.id}</td>
-                  <td style={{ padding: '6px 0' }}>{j.process?.name ?? j.processId}</td>
-                  <td style={{ padding: '6px 0' }}>
-                    {(() => {
-                      const name = j.packageName ?? j.process?.package?.name;
-                      const version = j.packageVersion ?? j.process?.package?.version;
-                      const header = name && version ? `${name} (${version})` : (name || '-');
-                      const exec = j.entrypointName
-                        ? `Entrypoint: ${j.entrypointName}`
-                        : (j.process?.scriptPath ? `Script: ${j.process.scriptPath}` : null);
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          <div>{header}</div>
-                          {exec && <div style={{ fontSize: 12, color: '#6b7280' }}>{exec}</div>}
-                        </div>
-                      );
-                    })()}
-                  </td>
-                  <td style={{ padding: '6px 0' }}>{j.robot?.name ?? 'Unassigned'}</td>
-                  <td style={{ padding: '6px 0' }}>{j.status}</td>
-                  <td style={{ padding: '6px 0' }}>{new Date(j.createdAt).toLocaleString()}</td>
-                  <td style={{ padding: '6px 0' }}>{duration(j)}</td>
-                  <td data-type="actions" style={{ padding: '6px 0' }}>
-                    {(j.status === 'pending' || j.status === 'running') && (
-                      <button style={dangerBtn} onClick={()=>handleCancel(j.id)}>Cancel</button>
-                    )}
-                    {j.executionId && (
-                      <button
-                        style={{ ...secondaryBtn, marginLeft: 8 }}
-                        onClick={() => { window.location.hash = `#/jobs/${j.id}/logs/${j.executionId}`; }}
-                      >
-                        View Logs
-                      </button>
-                    )}
-                  </td>
+  function sourceLabel(j: Job) {
+    // No explicit source in API; default to Manual for now.
+    return (j.parameters as any)?.source || "Manual";
+  }
+
+  function hostname(j: Job) {
+    return j.robot?.machineInfo || j.robot?.name || "-";
+  }
+
+  function stateBadge(j: Job) {
+    const state = j.status;
+    return <span className={`job-pill state-${state}`}>{state}</span>;
+  }
+
+  function startedLabel(j: Job) {
+    return j.startedAt ? new Date(j.startedAt).toLocaleString() : "—";
+  }
+
+  function endedLabel(j: Job) {
+    return j.finishedAt ? new Date(j.finishedAt).toLocaleString() : "—";
+  }
+
+  function resetFilters() {
+    setStatus("");
+    setRuntimeType("");
+    setSource("");
+    setTimeRange("24h");
+    setSearch("");
+    setProcessId(undefined);
+    setPage(0);
+    void load(undefined);
+  }
+
+  function applyFiltersAndSort(raw: Job[]) {
+    const now = Date.now();
+    const windowMs = timeRange === "24h" ? 24*60*60*1000 : timeRange === "7d" ? 7*24*60*60*1000 : undefined;
+    const filtered = raw.filter(j => {
+      if (runtimeType && runtimeLabel(j) !== runtimeType) return false;
+      if (source && sourceLabel(j) !== source) return false;
+      if (windowMs) {
+        const created = new Date(j.createdAt).getTime();
+        if (isFinite(created) && now - created > windowMs) return false;
+      }
+      if (search.trim()) {
+        const needle = search.trim().toLowerCase();
+        const hay = [j.process?.name, hostname(j), String(j.id)].filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(needle)) return false;
+      }
+      return true;
+    });
+
+    const sorted = [...filtered].sort((a,b) => {
+      const dir = sortDir === "asc" ? 1 : -1;
+      const va = sortValue(a, sortBy);
+      const vb = sortValue(b, sortBy);
+      if (va === vb) return 0;
+      return va > vb ? dir : -dir;
+    });
+    return sorted;
+  }
+
+  function sortValue(j: Job, key: typeof sortBy) {
+    if (key === "started") return new Date(j.startedAt || j.createdAt).getTime();
+    if (key === "ended") return new Date(j.finishedAt || 0).getTime();
+    if (key === "status") return j.status;
+    if (key === "process") return j.process?.name || "";
+    return j.id;
+  }
+
+  const filtered = useMemo(() => applyFiltersAndSort(items), [items, runtimeType, source, search, timeRange, sortBy, sortDir]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const visible = filtered.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
+
+  return (
+    <div style={{ padding: 16 }}>
+      <div className="page-shell" style={{ gap: 12 }}>
+        <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <h1 className="page-title" style={{ margin: 0 }}>Jobs</h1>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              value={search}
+              onChange={(e)=>{ setSearch(e.target.value); setPage(0); }}
+              placeholder="Search by process, host, or job ID"
+              className="search-input"
+              style={{ minWidth: 240 }}
+            />
+            <button onClick={() => load(processId)} className="btn btn-ghost" aria-label="Refresh">↻</button>
+            <button onClick={resetFilters} className="btn btn-secondary">Reset</button>
+            <button onClick={() => setShowFilters(!showFilters)} className="btn btn-ghost">{showFilters ? 'Hide Filters ▾' : 'Show Filters ▸'}</button>
+            <button onClick={openNew} className="btn btn-primary">Trigger Job</button>
+          </div>
+        </div>
+
+        <div className="surface-card" style={{ display: showFilters ? 'grid' : 'none', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, alignItems: 'center' }}>
+          <label style={label}>State
+            <select value={status} onChange={e=>{ setStatus(e.target.value as JobStatus | ""); setPage(0); }} style={input}>
+              <option value="">All</option>
+              {(['pending','running','completed','failed','canceled'] as JobStatus[]).map(s=> <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label style={label}>Runtime type
+            <select value={runtimeType} onChange={e=>{ setRuntimeType(e.target.value); setPage(0); }} style={input}>
+              <option value="">All</option>
+              <option value="RPA">RPA</option>
+              <option value="Agent">Agent</option>
+            </select>
+          </label>
+          <label style={label}>Source
+            <select value={source} onChange={e=>{ setSource(e.target.value); setPage(0); }} style={input}>
+              <option value="">All</option>
+              <option value="Manual">Manual</option>
+              <option value="Trigger">Trigger</option>
+            </select>
+          </label>
+          <label style={label}>Time range
+            <select value={timeRange} onChange={e=>{ setTimeRange(e.target.value); setPage(0); }} style={input}>
+              <option value="24h">Last 24h</option>
+              <option value="7d">Last 7d</option>
+              <option value="all">All time</option>
+            </select>
+          </label>
+          <label style={label}>Process filter
+            <select value={processId ?? ''} onChange={e=>{ const v = e.target.value ? Number(e.target.value) : undefined; setProcessId(v); setPage(0); load(v); }} style={input}>
+              <option value="">All processes</option>
+              {processesState.data.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+        </div>
+
+        <div className="surface-card">
+          {error && <div className="alert alert-error" role="alert">{error}</div>}
+          <div className="table-wrapper" role="region" aria-live="polite">
+            <table className="processes-table" aria-busy={loading}>
+              <thead>
+                <tr>
+                  <th onClick={()=>toggleSort('process')} role="button">Process</th>
+                  <th>Type</th>
+                  <th onClick={()=>toggleSort('status')} role="button">State</th>
+                  <th onClick={()=>toggleSort('started')} role="button">Started</th>
+                  <th onClick={()=>toggleSort('ended')} role="button">Ended</th>
+                  <th>Duration</th>
+                  <th>Runtime</th>
+                  <th>Source</th>
+                  <th>Hostname</th>
+                  <th className="actions-col">Actions</th>
                 </tr>
-              ))}
-              {items.length === 0 && (
-                <tr><td colSpan={8} style={{ paddingTop: 12, color: '#6b7280' }}>No jobs found</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {loading && SkeletonRows(8)}
+                {!loading && visible.map(j => (
+                  <tr key={j.id} className="data-row">
+                    <td>
+                      <div className="cell-primary">{j.process?.name || `Process ${j.processId}`}</div>
+                    </td>
+                    <td><Badge tone={runtimeLabel(j) === 'RPA' ? 'blue' : 'slate'}>{runtimeLabel(j)}</Badge></td>
+                    <td>{stateBadge(j)}</td>
+                    <td className="cell-secondary">{startedLabel(j)}</td>
+                    <td className="cell-secondary">{endedLabel(j)}</td>
+                    <td>{duration(j)}</td>
+                    <td>{runtimeLabel(j)}</td>
+                    <td>{sourceLabel(j)}</td>
+                    <td>{hostname(j)}</td>
+                    <td className="actions-col">
+                      <ActionMenu
+                        job={j}
+                        onStop={() => handleCancel(j.id)}
+                        onViewJobLogs={() => { if (j.executionId) window.location.hash = `#/automations/logs?jobId=${j.id}&executionId=${j.executionId}&processId=${j.processId}`; }}
+                        onViewProcessLogs={() => { window.location.hash = `#/automations/logs?processId=${j.processId}`; }}
+                        onRestart={() => { void handleTrigger({ processId: j.processId, robotId: j.robotId ?? undefined, parameters: null }); }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+                {!loading && visible.length === 0 && (
+                  <tr><td colSpan={10}>
+                    <div className="empty-state">
+                      <div>
+                        <p className="empty-title">No jobs match these filters</p>
+                        <p className="empty-body">Adjust state, time range, or search to see results.</p>
+                      </div>
+                      <button className="btn btn-secondary" onClick={resetFilters}>Reset filters</button>
+                    </div>
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+            <div style={{ color: '#6b7280', fontSize: 12 }}>Showing {visible.length} of {filtered.length}</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button onClick={()=>setPage(Math.max(0, currentPage-1))} disabled={currentPage===0} className="btn btn-ghost">Prev</button>
+              <span style={{ fontSize: 12, color: '#111827' }}>Page {currentPage+1} / {pageCount}</span>
+              <button onClick={()=>setPage(Math.min(pageCount-1, currentPage+1))} disabled={currentPage>=pageCount-1} className="btn btn-ghost">Next</button>
+              <select value={pageSize} onChange={e=>{ setPageSize(Number(e.target.value)); setPage(0); }} style={{ ...input, width: 120 }}>
+                {[10,25,50,100].map(n => <option key={n} value={n}>{n} / page</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {modalOpen && (
+          <TriggerModal processesState={processesState} robotsState={robotsState} onCancel={closeModal} onSave={handleTrigger} />
         )}
       </div>
+    </div>
+  );
+}
 
-      {modalOpen && (
-        <TriggerModal processesState={processesState} robotsState={robotsState} onCancel={closeModal} onSave={handleTrigger} />
+function SkeletonRows(count: number) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, idx) => (
+        <tr key={`s-${idx}`} className="skeleton-row">
+          <td><div className="skeleton shimmer" style={{ width: "160px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "70px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "90px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "120px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "120px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "80px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "70px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "90px" }} /></td>
+          <td><div className="skeleton shimmer" style={{ width: "120px" }} /></td>
+          <td className="actions-col"><div className="skeleton shimmer" style={{ width: "32px", marginLeft: "auto" }} /></td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
+function Badge({ tone = "slate", children }: { tone?: "slate" | "blue"; children: React.ReactNode }) {
+  return <span className={`badge badge-${tone}`}>{children}</span>;
+}
+
+function ActionMenu({ job, onStop, onViewJobLogs, onViewProcessLogs, onRestart }: { job: Job; onStop: ()=>void; onViewJobLogs: ()=>void; onViewProcessLogs: ()=>void; onRestart: ()=>void }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  const isRunning = job.status === 'running' || job.status === 'pending';
+
+  return (
+    <div className="action-menu">
+      <button className="btn btn-ghost icon-button" aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(o=>!o)}>⋮</button>
+      {open && (
+        <div className="menu-panel" role="menu">
+          {isRunning && <button className="menu-item" role="menuitem" onClick={()=>{ onStop(); setOpen(false); }}>Stop</button>}
+          <button className="menu-item" role="menuitem" onClick={()=>{ onRestart(); setOpen(false); }}>Restart</button>
+          <button className="menu-item" role="menuitem" onClick={()=>{ onViewJobLogs(); setOpen(false); }} disabled={!job.executionId}>View logs for this job</button>
+          <button className="menu-item" role="menuitem" onClick={()=>{ onViewProcessLogs(); setOpen(false); }}>View logs for this process</button>
+          <button className="menu-item danger" role="menuitem" onClick={()=>{ alert('Kill not implemented'); setOpen(false); }}>Kill</button>
+        </div>
       )}
     </div>
   );
