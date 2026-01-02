@@ -23,7 +23,7 @@ from backend.access import router as access_router
 from backend.access import ensure_default_roles
 from backend.audit import router as audit_router
 from backend.settings import router as settings_router
-from backend.runner import router as runner_router
+from backend.runner import router as runner_router, heartbeat_monitor
 from backend.sdk_auth import router as sdk_auth_router
 from backend.job_execution_logs import router as job_execution_logs_router
 from backend.logs import router as logs_router
@@ -93,11 +93,13 @@ def on_startup():
         ensure_admin_user(session)
         ensure_default_roles(session)
     scheduler.start()
+    heartbeat_monitor.start()
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
     await scheduler.stop()
+    await heartbeat_monitor.stop()
 
 # Auth routes (under /api for consistency)
 app.include_router(auth_router, prefix="/api")

@@ -69,6 +69,7 @@ export default function RobotsPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>Robots</h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={()=>load(search)} style={secondaryBtn} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search robots…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
           <button onClick={()=>load(search)} style={secondaryBtn}>Search</button>
           <button onClick={openNew} style={primaryBtn}>New Robot</button>

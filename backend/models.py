@@ -56,7 +56,7 @@ class Robot(SQLModel, table=True):
     __tablename__ = "robots"
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True)
-    status: str = Field(default="offline")  # "online" | "offline"
+    status: str = Field(default="disconnected")  # "connected" | "disconnected"
     last_heartbeat: Optional[str] = None
     current_job_id: Optional[int] = None
     machine_id: Optional[int] = Field(default=None, index=True)

@@ -8,6 +8,8 @@ export default function MachinesPage() {
   const [items, setItems] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
 
   const [addOpen, setAddOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -69,11 +71,29 @@ export default function MachinesPage() {
     }
   }
 
+  const filteredItems = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return items;
+    return items.filter((m) => {
+      const name = (m.name || "").toLowerCase();
+      const mode = (m.mode || "").toLowerCase();
+      const status = (m.status || "").toLowerCase();
+      return name.includes(term) || mode.includes(term) || status.includes(term);
+    });
+  }, [items, search]);
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>Machines</h1>
         <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search machines…"
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb" }}
+          />
+          <button onClick={() => setSearch(searchInput)} style={secondaryBtn}>Search</button>
           <button onClick={load} style={secondaryBtn}>Refresh</button>
           <button onClick={openAdd} style={primaryBtn}>Add Machine</button>
         </div>
@@ -97,7 +117,7 @@ export default function MachinesPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((m) => (
+              {filteredItems.map((m) => (
                 <MachineRow
                   key={m.id}
                   machine={m}
@@ -105,7 +125,7 @@ export default function MachinesPage() {
                   onDelete={() => handleDelete(m)}
                 />
               ))}
-              {items.length === 0 && (
+              {filteredItems.length === 0 && (
                 <tr>
                   <td colSpan={6} style={{ paddingTop: 12, color: "#6b7280" }}>
                     No machines found

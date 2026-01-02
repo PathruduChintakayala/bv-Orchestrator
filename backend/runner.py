@@ -1,23 +1,39 @@
+import asyncio
 import hashlib
 import json
+import logging
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlmodel import Session, select
 
-from backend.db import get_session
-from backend.models import Machine, Robot, Job, Process, Package, QueueItem
+from backend.db import get_session, engine
+from backend.models import Machine, Robot, Job, Process, Package, QueueItem, Setting
 from backend.packages import ensure_package_metadata
 from backend.robot_dependencies import get_current_robot
 from backend.audit_utils import log_event
 
 router = APIRouter(prefix="/runner", tags=["runner"])  # mounted under /api
+log = logging.getLogger("runner")
+
+HEARTBEAT_TIMEOUT_SETTING_KEY = "runner.heartbeat_timeout_seconds"
+HEARTBEAT_TIMEOUT_DEFAULT_SECONDS = 30
+HEARTBEAT_CHECK_INTERVAL_SECONDS = 10
 
 
 def now_iso():
     return datetime.now().isoformat(timespec='seconds')
+
+
+def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
 
 
 def _sha256_hex(value: str) -> str:
@@ -34,6 +50,18 @@ def _normalize_signature(value: Optional[str]) -> str:
         return lowered
     canonical = " ".join(candidate.split()).lower()
     return _sha256_hex(canonical)
+
+
+def _resolve_heartbeat_timeout(session: Session) -> int:
+    setting = session.exec(select(Setting).where(Setting.key == HEARTBEAT_TIMEOUT_SETTING_KEY)).first()
+    if setting:
+        try:
+            val = int(setting.value)
+            if val > 0:
+                return val
+        except Exception:
+            pass
+    return HEARTBEAT_TIMEOUT_DEFAULT_SECONDS
 
 
 def _require_machine_for_key(session: Session, machine_key: Optional[str]) -> Machine:
@@ -120,63 +148,102 @@ def _update_queue_items_for_job(session: Session, job: Job, final_status: str):
         session.add(qi)
 
 
-@router.post("/register-robot")
-def register_robot(payload: dict, request: Request, session: Session = Depends(get_session)):
-    name = (payload.get("name") or "").strip()
+@router.post("/connect-machine")
+def connect_machine(payload: dict, request: Request, session: Session = Depends(get_session)):
     machine_key = payload.get("machine_key")
     machine_signature = payload.get("machine_signature")
     machine_name = (payload.get("machine_name") or "").strip() or None
     machine_info = payload.get("machine_info") or None
-    if not name:
-        raise HTTPException(status_code=400, detail="name is required")
+
     machine = _require_machine_for_key(session, machine_key)
     if machine_name and machine.name.lower().strip() != machine_name.lower().strip():
         raise HTTPException(status_code=403, detail="machine_name does not match the provisioned machine")
+
     signature_hash = _normalize_signature(machine_signature)
     if machine.signature_hash and machine.signature_hash != signature_hash:
         raise HTTPException(status_code=403, detail="machine_signature does not match the provisioned machine")
     if not machine.signature_hash:
         machine.signature_hash = signature_hash
+
+    # Machine connect does not create robots; it only marks the machine as active.
     machine.status = "connected"
     machine.last_seen_at = now_iso()
     machine.updated_at = now_iso()
-    r = session.exec(select(Robot).where(Robot.name == name)).first()
-    if r:
-        # ensure token exists
-        if not r.api_token:
-            r.api_token = secrets.token_hex(32)
-        if r.machine_id is not None and r.machine_id != machine.id:
-            raise HTTPException(status_code=400, detail="Robot already bound to a different machine")
-        r.machine_id = int(machine.id)
-        r.status = "online"
-        r.machine_info = machine_info or r.machine_info
-        r.last_heartbeat = now_iso()
-        r.updated_at = now_iso()
-        session.add(r)
-        session.commit()
-        session.refresh(r)
-    else:
-        r = Robot(
-            name=name,
-            status="online",
-            machine_info=machine_info,
-            machine_id=int(machine.id),
-            api_token=secrets.token_hex(32),
-            last_heartbeat=now_iso(),
-            created_at=now_iso(),
-            updated_at=now_iso(),
-        )
-        session.add(r)
-        session.commit()
-        session.refresh(r)
-        try:
-            log_event(session, action="robot.register", entity_type="robot", entity_id=r.id, entity_name=r.name, before=None, after={"name": r.name, "status": r.status}, metadata=None, request=request, user=None)
-        except Exception:
-            pass
     session.add(machine)
     session.commit()
     session.refresh(machine)
-    return {"robot_id": r.id, "api_token": r.api_token, "name": r.name, "machine_id": machine.id}
+
+    try:
+        log_event(
+            session,
+            action="machine.connect",
+            entity_type="machine",
+            entity_id=machine.id,
+            entity_name=machine.name,
+            before=None,
+            after={"status": machine.status, "last_seen_at": machine.last_seen_at, "machine_info": machine_info},
+            metadata=None,
+            request=request,
+            user=None,
+        )
+    except Exception:
+        pass
+
+    return {
+        "machine_id": machine.id,
+        "status": machine.status,
+        "last_seen_at": machine.last_seen_at,
+        "heartbeat_timeout_seconds": _resolve_heartbeat_timeout(session),
+    }
+
+
+@router.get("/assigned-robots")
+def assigned_robots(machine_key: str, machine_signature: str, session: Session = Depends(get_session)):
+    machine = _require_machine_for_key(session, machine_key)
+    signature_hash = _normalize_signature(machine_signature)
+    if machine.signature_hash and machine.signature_hash != signature_hash:
+        raise HTTPException(status_code=403, detail="machine_signature does not match the provisioned machine")
+    if not machine.signature_hash:
+        machine.signature_hash = signature_hash
+
+    machine.status = "connected"
+    machine.last_seen_at = now_iso()
+    machine.updated_at = now_iso()
+    session.add(machine)
+
+    robots = session.exec(select(Robot).where(Robot.machine_id == machine.id)).all()
+    robot_payloads = []
+    now = now_iso()
+    for r in robots:
+        if not r.api_token:
+            r.api_token = secrets.token_hex(32)
+            r.updated_at = now
+            session.add(r)
+        robot_payloads.append(
+            {
+                "id": r.id,
+                "name": r.name,
+                "machine_id": r.machine_id,
+                "status": r.status,
+                "credential_asset_id": r.credential_asset_id,
+                "last_heartbeat": r.last_heartbeat,
+                "api_token": r.api_token,
+            }
+        )
+
+    session.commit()
+
+    return {
+        "machine_id": machine.id,
+        "robots": robot_payloads,
+        "heartbeat_timeout_seconds": _resolve_heartbeat_timeout(session),
+    }
+
+
+@router.post("/register-robot")
+def register_robot(payload: dict, request: Request, session: Session = Depends(get_session)):
+    # Auto-registration is intentionally disabled; runners must use connect-machine + assigned-robots.
+    raise HTTPException(status_code=410, detail="Robot auto-registration is disabled; use connect-machine and assigned-robots")
 
 
 @router.post("/heartbeat")
@@ -195,14 +262,15 @@ def runner_heartbeat(payload: dict, request: Request, session: Session = Depends
         raise HTTPException(status_code=403, detail="machine_signature mismatch")
     if not machine.signature_hash:
         machine.signature_hash = signature_hash
+    now = now_iso()
     machine.status = "connected"
-    machine.last_seen_at = now_iso()
-    machine.updated_at = now_iso()
-    current_robot.last_heartbeat = now_iso()
-    current_robot.status = "online"
+    machine.last_seen_at = now
+    machine.updated_at = now
+    current_robot.last_heartbeat = now
+    current_robot.status = "connected"
     if payload.get("machine_info"):
         current_robot.machine_info = payload.get("machine_info")
-    current_robot.updated_at = now_iso()
+    current_robot.updated_at = now
     session.add(current_robot)
     session.add(machine)
     session.commit()
@@ -321,3 +389,74 @@ def update_job_status(job_id: int, payload: dict, request: Request, session: Ses
     except Exception:
         pass
     return {"status": "ok"}
+
+
+class RobotHeartbeatMonitor:
+    def __init__(self, db_engine, check_interval_seconds: int = HEARTBEAT_CHECK_INTERVAL_SECONDS, default_timeout_seconds: int = HEARTBEAT_TIMEOUT_DEFAULT_SECONDS):
+        self.engine = db_engine
+        self.check_interval = check_interval_seconds
+        self.default_timeout = default_timeout_seconds
+        self._task: Optional[asyncio.Task] = None
+        self._stopped = False
+
+    def start(self):
+        if self._task and not self._task.done():
+            return
+        self._stopped = False
+        self._task = asyncio.create_task(self._run(), name="robot-heartbeat-monitor")
+
+    async def stop(self):
+        self._stopped = True
+        if self._task:
+            try:
+                await asyncio.wait_for(self._task, timeout=5)
+            except Exception:
+                pass
+
+    async def _run(self):
+        while not self._stopped:
+            try:
+                self._tick()
+            except Exception as exc:
+                log.exception("Heartbeat monitor tick failed: %s", exc)
+            await asyncio.sleep(self.check_interval)
+
+    def _tick(self):
+        now_dt = datetime.now()
+        changed = False
+        now_str = now_iso()
+
+        with Session(self.engine) as session:
+            try:
+                timeout_seconds = int(_resolve_heartbeat_timeout(session))
+            except Exception:
+                timeout_seconds = self.default_timeout
+            timeout_seconds = timeout_seconds if timeout_seconds > 0 else self.default_timeout
+            threshold = now_dt - timedelta(seconds=timeout_seconds)
+
+            robots = session.exec(select(Robot)).all()
+            machines = session.exec(select(Machine)).all()
+
+            for r in robots:
+                hb = _parse_iso_datetime(r.last_heartbeat)
+                if hb is None or hb < threshold:
+                    if r.status != "disconnected":
+                        r.status = "disconnected"
+                        r.updated_at = now_str
+                        session.add(r)
+                        changed = True
+
+            for m in machines:
+                seen = _parse_iso_datetime(m.last_seen_at)
+                if seen is None or seen < threshold:
+                    if m.status != "disconnected":
+                        m.status = "disconnected"
+                        m.updated_at = now_str
+                        session.add(m)
+                        changed = True
+
+            if changed:
+                session.commit()
+
+
+heartbeat_monitor = RobotHeartbeatMonitor(engine)

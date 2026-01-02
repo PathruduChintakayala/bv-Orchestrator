@@ -37,7 +37,13 @@ def list_robots(search: Optional[str] = None, status: Optional[str] = None, sess
         s = search.lower()
         robots = [r for r in robots if s in r.name.lower()]
     if status:
-        robots = [r for r in robots if r.status == status]
+        normalized = status.lower()
+        targets = [normalized]
+        if normalized == "online":
+            targets.append("connected")
+        elif normalized == "offline":
+            targets.append("disconnected")
+        robots = [r for r in robots if (r.status or "").lower() in targets]
     robots.sort(key=lambda r: r.name.lower())
     return [to_out(r) for r in robots]
 
@@ -94,11 +100,12 @@ def create_robot(payload: dict, request: Request, session=Depends(get_session), 
 
     r = Robot(
         name=name,
-        status="offline",
+        status="disconnected",
         machine_id=int(machine_id) if machine_id is not None else None,
         machine_info=payload.get("machine_info") or None,
         credential_asset_id=credential_asset_id,
         api_token=secrets.token_hex(16),
+        last_heartbeat=None,
         created_at=now_iso(),
         updated_at=now_iso(),
     )
@@ -118,8 +125,8 @@ def update_robot(robot_id: int, payload: dict, request: Request, session=Depends
     if not r:
         raise HTTPException(status_code=404, detail="Robot not found")
     before_out = to_out(r)
-    if "status" in payload and payload.get("status") in ("online", "offline"):
-        r.status = payload["status"]
+    if "status" in payload:
+        raise HTTPException(status_code=400, detail="Robot status is managed by runner heartbeat")
     if "machine_info" in payload:
         r.machine_info = payload.get("machine_info") or None
     if "machine_id" in payload:
@@ -165,7 +172,7 @@ def robot_heartbeat(robot_id: int, request: Request, session=Depends(get_session
     if not r:
         raise HTTPException(status_code=404, detail="Robot not found")
     r.last_heartbeat = now_iso()
-    r.status = "online"
+    r.status = "connected"
     r.updated_at = now_iso()
     session.add(r)
     session.commit()
