@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type React from 'react'
 import type { Queue } from '../types/queue'
 import { fetchQueues, fetchQueueStats, createQueue, updateQueue, deleteQueue } from '../api/queues'
 
@@ -113,116 +114,131 @@ export default function QueuesPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>Queues</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder='Search queues...' style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-          <button onClick={load} style={secondaryBtn}>Search</button>
-          <button onClick={load} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
-          <button onClick={openNew} style={primaryBtn}>+ Add Queue</button>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <input type="checkbox" checked={hasTrigger} onChange={e=>setHasTrigger(e.target.checked)} />
-          Has Trigger
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span>Labels:</span>
-          <input value={labels} onChange={e=>setLabels(e.target.value)} placeholder='Filter labels...' style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #e5e7eb', width: 120 }} />
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span>Properties:</span>
-          <input value={properties} onChange={e=>setProperties(e.target.value)} placeholder='Filter properties...' style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #e5e7eb', width: 120 }} />
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <input type="checkbox" checked={completedItems} onChange={e=>setCompletedItems(e.target.checked)} />
-          Completed queue items
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <input type="checkbox" checked={uncompletedItems} onChange={e=>setUncompletedItems(e.target.checked)} />
-          Uncompleted queue items
-        </label>
-      </div>
-
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
-        {selected.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
-            <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
-            <button onClick={handleBulkDelete} style={dangerBtn}>Delete</button>
+    <div style={{ padding: 16 }}>
+      <div className="page-shell" style={{ gap: 12 }}>
+        <header className="page-header surface-card">
+          <div>
+            <h1 className="page-title">Queues</h1>
           </div>
-        )}
-        {loading ? <p>Loading...</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ width: 40 }}>
-                  <input type="checkbox" checked={selected.length === items.length && items.length > 0} onChange={toggleSelectAll} ref={(el) => {
-                    if (el) el.indeterminate = selected.length > 0 && selected.length < items.length
-                  }} />
-                </th>
-                <th>Name</th>
-                <th data-align="right">In Progress</th>
-                <th data-align="right">Remaining</th>
-                <th data-align="right">Average Processing Time</th>
-                <th data-align="right">Successful</th>
-                <th data-align="right">App Exceptions</th>
-                <th data-align="right">Biz Exceptions</th>
-                <th>Properties</th>
-                <th data-type="actions">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(q => {
-                const metrics = getQueueMetrics(q.id)
-                return (
-                  <tr key={q.id}>
-                    <td>
-                      <input type="checkbox" checked={selected.includes(q.id)} onChange={() => toggleSelect(q.id)} />
-                    </td>
-                    <td>
-                      <a href={`#/queue-items?queueId=${q.id}`} style={{ color: '#2563eb', textDecoration: 'none' }}>{q.name}</a>
-                    </td>
-                    <td data-align="right">{metrics.inProgress ?? 0}</td>
-                    <td data-align="right">{metrics.remaining ?? 0}</td>
-                    <td data-align="right">{formatTime(metrics.avgProcessingTime ?? 0)}</td>
-                    <td data-align="right">{metrics.successful ?? 0}</td>
-                    <td data-align="right">{metrics.appExceptions ?? 0}</td>
-                    <td data-align="right">{metrics.bizExceptions ?? 0}</td>
-                    <td title={q.description || ''}>{(q.description || '').slice(0, 20)}{(q.description || '').length > 20 ? '...' : ''}</td>
-                    <td data-type="actions">
-                      <select style={{ border: '1px solid #e5e7eb', backgroundColor: '#f3f4f6', cursor: 'pointer', padding: '4px 8px', borderRadius: 4, fontSize: 12, color: '#111827' }} onChange={e => {
-                        const action = e.target.value
-                        if (action === 'view-items') window.location.hash = `#/queue-items?queueId=${q.id}`
-                        else if (action === 'view-details') setSelectedQueue(q)
-                        else if (action === 'edit') openEdit(q)
-                        else if (action === 'delete') handleDelete(q.id)
-                        e.target.value = ''
-                      }}>
-                        <option value=''>Actions</option>
-                        <option value='view-items'>View Queue Items</option>
-                        <option value='view-details'>View Details</option>
-                        <option value='edit'>Edit Queue</option>
-                        <option value='delete'>Delete Queue</option>
-                      </select>
-                    </td>
-                  </tr>
-                )
-              })}
-              {items.length === 0 && (
-                <tr><td colSpan={10} style={{ paddingTop: 12, color: '#6b7280', textAlign: 'center' }}>
-                  <div style={{ padding: 32 }}>
-                    <p style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No queues found</p>
-                    <p>Queues are used to manage and process items asynchronously. Create your first queue to get started.</p>
-                    <button onClick={openNew} style={{ ...primaryBtn, marginTop: 16 }}>Add Queue</button>
-                  </div>
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        )}
+          <div className="page-actions">
+            <form className="search-form" onSubmit={(e)=>{ e.preventDefault(); load(); }} role="search">
+              <span className="search-icon" aria-hidden>🔍</span>
+              <input
+                value={search}
+                onChange={(e)=>setSearch(e.target.value)}
+                placeholder="Search queues"
+                className="search-input"
+                aria-label="Search queues"
+              />
+              <button type="submit" className="btn btn-secondary">Search</button>
+            </form>
+            <div className="action-buttons">
+              <button type="button" onClick={load} className="btn btn-ghost" aria-label="Refresh list">↻</button>
+              <button type="button" onClick={openNew} className="btn btn-primary">+ Add Queue</button>
+            </div>
+          </div>
+        </header>
+
+        <div className="surface-card" style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input type="checkbox" checked={hasTrigger} onChange={e=>setHasTrigger(e.target.checked)} />
+            Has Trigger
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span>Labels:</span>
+            <input value={labels} onChange={e=>setLabels(e.target.value)} placeholder='Filter labels...' style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #e5e7eb', width: 120 }} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span>Properties:</span>
+            <input value={properties} onChange={e=>setProperties(e.target.value)} placeholder='Filter properties...' style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #e5e7eb', width: 120 }} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input type="checkbox" checked={completedItems} onChange={e=>setCompletedItems(e.target.checked)} />
+            Completed queue items
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input type="checkbox" checked={uncompletedItems} onChange={e=>setUncompletedItems(e.target.checked)} />
+            Uncompleted queue items
+          </label>
+        </div>
+
+        <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
+          {selected.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
+              <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
+              <button onClick={handleBulkDelete} style={dangerBtn}>Delete</button>
+            </div>
+          )}
+          {loading ? <p>Loading...</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 40 }}>
+                    <input type="checkbox" checked={selected.length === items.length && items.length > 0} onChange={toggleSelectAll} ref={(el) => {
+                      if (el) el.indeterminate = selected.length > 0 && selected.length < items.length
+                    }} />
+                  </th>
+                  <th>Name</th>
+                  <th data-align="right">In Progress</th>
+                  <th data-align="right">Remaining</th>
+                  <th data-align="right">Average Processing Time</th>
+                  <th data-align="right">Successful</th>
+                  <th data-align="right">App Exceptions</th>
+                  <th data-align="right">Biz Exceptions</th>
+                  <th>Properties</th>
+                  <th data-type="actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(q => {
+                  const metrics = getQueueMetrics(q.id)
+                  return (
+                    <tr key={q.id}>
+                      <td>
+                        <input type="checkbox" checked={selected.includes(q.id)} onChange={() => toggleSelect(q.id)} />
+                      </td>
+                      <td>
+                        <a href={`#/queue-items?queueId=${q.id}`} style={{ color: '#2563eb', textDecoration: 'none' }}>{q.name}</a>
+                      </td>
+                      <td data-align="right">{metrics.inProgress ?? 0}</td>
+                      <td data-align="right">{metrics.remaining ?? 0}</td>
+                      <td data-align="right">{formatTime(metrics.avgProcessingTime ?? 0)}</td>
+                      <td data-align="right">{metrics.successful ?? 0}</td>
+                      <td data-align="right">{metrics.appExceptions ?? 0}</td>
+                      <td data-align="right">{metrics.bizExceptions ?? 0}</td>
+                      <td title={q.description || ''}>{(q.description || '').slice(0, 20)}{(q.description || '').length > 20 ? '...' : ''}</td>
+                      <td data-type="actions">
+                        <select style={{ border: '1px solid #e5e7eb', backgroundColor: '#f3f4f6', cursor: 'pointer', padding: '4px 8px', borderRadius: 4, fontSize: 12, color: '#111827' }} onChange={e => {
+                          const action = e.target.value
+                          if (action === 'view-items') window.location.hash = `#/queue-items?queueId=${q.id}`
+                          else if (action === 'view-details') setSelectedQueue(q)
+                          else if (action === 'edit') openEdit(q)
+                          else if (action === 'delete') handleDelete(q.id)
+                          e.target.value = ''
+                        }}>
+                          <option value=''>Actions</option>
+                          <option value='view-items'>View Queue Items</option>
+                          <option value='view-details'>View Details</option>
+                          <option value='edit'>Edit Queue</option>
+                          <option value='delete'>Delete Queue</option>
+                        </select>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {items.length === 0 && (
+                  <tr><td colSpan={10} style={{ paddingTop: 12, color: '#6b7280', textAlign: 'center' }}>
+                    <div style={{ padding: 32 }}>
+                      <p style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No queues found</p>
+                      <p>Queues are used to manage and process items asynchronously. Create your first queue to get started.</p>
+                      <button onClick={openNew} style={{ ...primaryBtn, marginTop: 16 }}>Add Queue</button>
+                    </div>
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
       {modalOpen && (

@@ -50,3 +50,9 @@ export async function deleteMachine(id: number): Promise<void> {
   const res = await fetch(`/api/machines/${id}`, { method: "DELETE", headers: authHeaders() });
   if (!res.ok) throw new Error(await res.text());
 }
+
+export async function regenerateMachineKey(id: number): Promise<{ machineKey: string }> {
+  const res = await fetch(`/api/machines/${id}/regenerate-key`, { method: "POST", headers: authHeaders() });
+  if (!res.ok) throw new Error(await res.text());
+  return toCamel(await res.json()) as { machineKey: string };
+}

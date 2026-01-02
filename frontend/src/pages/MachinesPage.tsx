@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { Machine, MachineMode, MachineStatus } from "../types/machine";
 import type { Robot } from "../types/robot";
-import { createMachine, deleteMachine, fetchMachines, getMachine } from "../api/machines";
+import { createMachine, deleteMachine, fetchMachines, getMachine, regenerateMachineKey } from "../api/machines";
 import { fetchRobots } from "../api/robots";
 
 export default function MachinesPage() {
@@ -83,23 +83,26 @@ export default function MachinesPage() {
   }, [items, search]);
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>Machines</h1>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search machines…"
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb" }}
-          />
-          <button onClick={() => setSearch(searchInput)} style={secondaryBtn}>Search</button>
-          <button onClick={load} style={secondaryBtn}>Refresh</button>
-          <button onClick={openAdd} style={primaryBtn}>Add Machine</button>
+    <div style={{ padding: 16 }}>
+      <div className="page-shell" style={{ gap: 12 }}>
+        <div className="surface-card" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <h1 className="page-title" style={{ margin: 0 }}>Machines</h1>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search machines…"
+              style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb" }}
+            />
+            <button onClick={() => setSearch(searchInput)} style={secondaryBtn}>Search</button>
+            <button onClick={load} style={secondaryBtn}>Refresh</button>
+            <button onClick={openAdd} style={primaryBtn}>Add Machine</button>
+          </div>
         </div>
-      </div>
 
-      <div style={{ backgroundColor: "#fff", borderRadius: 12, boxShadow: "0 10px 24px rgba(15,23,42,0.08)", padding: 16 }}>
+        <div style={{ backgroundColor: "#fff", borderRadius: 12, boxShadow: "0 10px 24px rgba(15,23,42,0.08)", padding: 16 }}>
         {loading ? (
           <p>Loading…</p>
         ) : error ? (
@@ -135,9 +138,9 @@ export default function MachinesPage() {
             </tbody>
           </table>
         )}
-      </div>
+        </div>
 
-      {addOpen && (
+        {addOpen && (
         <AddMachineModal
           onCancel={closeAdd}
           onCreated={async (created) => {
@@ -147,9 +150,9 @@ export default function MachinesPage() {
           }}
           onCreate={handleCreate}
         />
-      )}
+        )}
 
-      {detailsOpen && selected && (
+        {detailsOpen && selected && (
         <MachineDetailsModal
           machine={selected}
           onClose={closeDetails}
@@ -158,7 +161,8 @@ export default function MachinesPage() {
             await load();
           }}
         />
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -303,8 +307,20 @@ function AddMachineModal({
         {createdKey !== null ? (
           <div style={{ display: "grid", gap: 10 }}>
             <div style={{ fontSize: 14, color: "#111827", fontWeight: 600 }}>Machine Key</div>
-            <div style={{ padding: 12, borderRadius: 8, border: "1px solid #e5e7eb", background: "#f9fafb", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace" }}>
-              {createdKey || "(no key returned)"}
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ flex: 1, padding: 12, borderRadius: 8, border: "1px solid #e5e7eb", background: "#f9fafb", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace", fontSize: 14 }}>
+                {createdKey || "(no key returned)"}
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(createdKey || "");
+                  alert("Key copied to clipboard!");
+                }}
+                style={{ ...secondaryBtn, padding: "10px", minWidth: "auto" }}
+                title="Copy to clipboard"
+              >
+                📋
+              </button>
             </div>
             <div style={{ fontSize: 12, color: "#b45309" }}>
               Copy this key now. You will not be able to view it again.
@@ -367,6 +383,7 @@ function MachineDetailsModal({
   const [robots, setRobots] = useState<Robot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [regeneratedKey, setRegeneratedKey] = useState<string | null>(null);
 
   useEffect(() => {
     load();
@@ -401,6 +418,17 @@ function MachineDetailsModal({
     }
   }
 
+  async function doRegenerateKey() {
+    if (machine.mode !== "runner") return;
+    if (!confirm("Regenerate machine key? This will invalidate the current key and disconnect any running services.")) return;
+    try {
+      const result = await regenerateMachineKey(machine.id);
+      setRegeneratedKey(result.machineKey);
+    } catch (e: any) {
+      alert(e.message || "Regenerate failed");
+    }
+  }
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center" }}>
       <div style={{ width: "100%", maxWidth: 900, background: "#fff", borderRadius: 16, boxShadow: "0 4px 16px rgba(0,0,0,0.15)", padding: 24, display: "flex", flexDirection: "column", gap: 16, maxHeight: "85vh", overflow: "auto" }}>
@@ -418,6 +446,30 @@ function MachineDetailsModal({
           <div style={{ fontSize: 14, color: "#111827" }}><span style={{ color: "#6b7280" }}>Last Seen:</span> {machine.lastSeenAt ? new Date(machine.lastSeenAt).toLocaleString() : "—"}</div>
         </div>
 
+        {regeneratedKey !== null && (
+          <div style={{ display: "grid", gap: 10, padding: 16, borderRadius: 12, backgroundColor: "#fef3c7", border: "1px solid #f59e0b" }}>
+            <div style={{ fontSize: 14, color: "#111827", fontWeight: 600 }}>New Machine Key</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ flex: 1, padding: 12, borderRadius: 8, border: "1px solid #e5e7eb", background: "#f9fafb", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace", fontSize: 14 }}>
+                {regeneratedKey}
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(regeneratedKey || "");
+                  alert("Key copied to clipboard!");
+                }}
+                style={{ ...secondaryBtn, padding: "10px", minWidth: "auto" }}
+                title="Copy to clipboard"
+              >
+                📋
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: "#b45309" }}>
+              Copy this key now. You will not be able to view it again. The old key is now invalid.
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 8 }}>
           <button
             style={{ ...primaryBtn, opacity: canCreateRobot ? 1 : 0.6 }}
@@ -429,6 +481,16 @@ function MachineDetailsModal({
           >
             Create Robot
           </button>
+
+          {machine.mode === "runner" && (
+            <button
+              onClick={doRegenerateKey}
+              style={secondaryBtn}
+              title="Regenerate machine key"
+            >
+              Regenerate Key
+            </button>
+          )}
 
           <button
             style={{ ...dangerBtn, opacity: deleteDisabled ? 0.6 : 1 }}

@@ -163,65 +163,69 @@ export default function PackagesPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>Packages</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search packages…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-          <button onClick={()=>load(search)} style={secondaryBtn}>Search</button>
-          <button onClick={openUpload} style={primaryBtn}>Upload Package</button>
+    <div style={{ padding: 16 }}>
+      <div className="page-shell" style={{ gap: 12 }}>
+        <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <h1 className="page-title" style={{ margin: 0 }}>Packages</h1>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search packages…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+            <button onClick={()=>load(search)} style={secondaryBtn}>Search</button>
+            <button onClick={openUpload} style={primaryBtn}>Upload Package</button>
+          </div>
         </div>
-      </div>
 
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
-        {loading ? <p>Loading…</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
-                <th style={{ paddingBottom: 8 }}>Package Name</th>
-                <th style={{ paddingBottom: 8 }}>Type</th>
-                <th style={{ paddingBottom: 8 }}>Total Versions</th>
-                <th style={{ paddingBottom: 8 }}>Updated</th>
-                <th style={{ paddingBottom: 8 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {grouped.map(row => (
-                <tr key={row.name} style={{ fontSize: 14, color: '#111827' }}>
-                  <td style={{ padding: '6px 0' }}>{row.name}</td>
-                  <td style={{ padding: '6px 0' }}>{row.typeLabel}</td>
-                  <td style={{ padding: '6px 0' }}>{row.totalVersions}</td>
-                  <td style={{ padding: '6px 0' }}>{new Date(row.updatedAt).toLocaleString()}</td>
-                  <td style={{ padding: '6px 0' }}>
-                    <button style={primaryBtn} onClick={()=>openVersions(row.name)}>View Versions</button>
-                  </td>
+        <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
+          {loading ? <p>Loading…</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
+                  <th style={{ paddingBottom: 8 }}>Package Name</th>
+                  <th style={{ paddingBottom: 8 }}>Type</th>
+                  <th style={{ paddingBottom: 8 }}>Total Versions</th>
+                  <th style={{ paddingBottom: 8 }}>Updated</th>
+                  <th style={{ paddingBottom: 8 }}>Actions</th>
                 </tr>
-              ))}
-              {grouped.length === 0 && (
-                <tr><td colSpan={5} style={{ paddingTop: 12, color: '#6b7280' }}>No packages found</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {grouped.map(row => (
+                  <tr key={row.name} style={{ fontSize: 14, color: '#111827' }}>
+                    <td style={{ padding: '6px 0' }}>{row.name}</td>
+                    <td style={{ padding: '6px 0' }}>{row.typeLabel}</td>
+                    <td style={{ padding: '6px 0' }}>{row.totalVersions}</td>
+                    <td style={{ padding: '6px 0' }}>{new Date(row.updatedAt).toLocaleString()}</td>
+                    <td style={{ padding: '6px 0' }}>
+                      <button style={primaryBtn} onClick={()=>openVersions(row.name)}>View Versions</button>
+                    </td>
+                  </tr>
+                ))}
+                {grouped.length === 0 && (
+                  <tr><td colSpan={5} style={{ paddingTop: 12, color: '#6b7280' }}>No packages found</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {uploadOpen && (
+          <UploadModal onCancel={closeUpload} onSave={handleUpload} />
+        )}
+
+        {versionsModal && (
+          <VersionsModal
+            packageName={versionsModal}
+            versions={versionsFor(versionsModal)}
+            isActive={isActiveVersion}
+            onClose={closeVersions}
+            onDelete={deleteSingle}
+            selectedIds={selectedIds}
+            onToggle={toggleSelect}
+            onBulkDelete={bulkDelete}
+            onDeleteInactive={deleteAllInactive}
+          />
         )}
       </div>
-
-      {uploadOpen && (
-        <UploadModal onCancel={closeUpload} onSave={handleUpload} />
-      )}
-
-      {versionsModal && (
-        <VersionsModal
-          packageName={versionsModal}
-          versions={versionsFor(versionsModal)}
-          isActive={isActiveVersion}
-          onClose={closeVersions}
-          onDelete={deleteSingle}
-          selectedIds={selectedIds}
-          onToggle={toggleSelect}
-          onBulkDelete={bulkDelete}
-          onDeleteInactive={deleteAllInactive}
-        />
-      )}
     </div>
   );
 }

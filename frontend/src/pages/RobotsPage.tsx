@@ -65,18 +65,21 @@ export default function RobotsPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>Robots</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={()=>load(search)} style={secondaryBtn} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search robots…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-          <button onClick={()=>load(search)} style={secondaryBtn}>Search</button>
-          <button onClick={openNew} style={primaryBtn}>New Robot</button>
+    <div style={{ padding: 16 }}>
+      <div className="page-shell" style={{ gap: 12 }}>
+        <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <h1 className="page-title" style={{ margin: 0 }}>Robots</h1>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={()=>load(search)} style={secondaryBtn} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search robots…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+            <button onClick={()=>load(search)} style={secondaryBtn}>Search</button>
+            <button onClick={openNew} style={primaryBtn}>New Robot</button>
+          </div>
         </div>
-      </div>
 
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
+        <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
         {loading ? <p>Loading…</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -111,11 +114,12 @@ export default function RobotsPage() {
             </tbody>
           </table>
         )}
-      </div>
+        </div>
 
-      {modalOpen && (
+        {modalOpen && (
         <RobotModal initial={editing} onCancel={closeModal} onSave={handleSave} />
-      )}
+        )}
+      </div>
     </div>
   );
 }
