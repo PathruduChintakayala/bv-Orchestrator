@@ -10,4 +10,6 @@ export interface Process {
   createdAt: string;
   updatedAt: string;
   package?: import('./package').Package | null;
+  latestVersion?: string | null;
+  upgradeAvailable?: boolean;
 }

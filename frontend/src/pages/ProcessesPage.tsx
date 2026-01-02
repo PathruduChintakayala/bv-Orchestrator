@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { Process } from "../types/processes";
-import { fetchProcesses, createProcess, updateProcess, deleteProcess } from "../api/processes";
+import { fetchProcesses, createProcess, updateProcess, deleteProcess, upgradeProcessToLatest } from "../api/processes";
 import { fetchPackages } from "../api/packages";
 import TriggerModal from "../components/TriggerModal";
 import { getProcessTypeLabel, getProcessTypeTone } from "../utils/processTypes";
@@ -170,6 +170,18 @@ export default function ProcessesPage() {
     window.location.hash = `#/automations/logs?processId=${processId}`;
   }
 
+  async function handleUpgradeToLatest(p: Process) {
+    if (!p.upgradeAvailable || !p.package?.version || !p.latestVersion) return;
+    if (!confirm(`Upgrade ${p.name} from ${p.package.version} to ${p.latestVersion}?`)) return;
+    try {
+      await upgradeProcessToLatest(p.id);
+      await load(search);
+      alert(`Upgraded to ${p.latestVersion}`);
+    } catch (e: any) {
+      alert(e.message || "Upgrade failed");
+    }
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <div className="page-shell processes-shell" style={{ gap: 12 }}>
@@ -231,7 +243,12 @@ export default function ProcessesPage() {
                       <div className="cell-primary">{p.name}</div>
                     </td>
                     <td><Badge tone={getProcessTypeTone(p.package?.isBvpackage ?? false)}>{typeLabel(p)}</Badge></td>
-                    <td><span className="mono">{p.package?.version || "N/A"}</span></td>
+                    <td>
+                      <span className="mono" title={p.package?.version || "N/A"}>{p.package?.version || "N/A"}</span>
+                      {p.upgradeAvailable && p.latestVersion && (
+                        <span title="Newer version available" style={{ marginLeft: 6, color: '#2563eb' }}>⬆</span>
+                      )}
+                    </td>
                     <td>
                       <div className="cell-primary truncate" title={entrypointLabel(p)}>{entrypointLabel(p)}</div>
                     </td>
@@ -250,6 +267,7 @@ export default function ProcessesPage() {
                         actions={[
                           { label: "Edit", onClick: () => openEdit(p) },
                           { label: "View Jobs", onClick: () => goToJobs(p.id) },
+                          { label: "Upgrade to latest version", onClick: () => handleUpgradeToLatest(p), disabled: !p.upgradeAvailable },
                           { label: "Add Trigger", onClick: () => openTriggerForProcess(p.id) },
                           { label: "View Logs", onClick: () => goToLogs(p.id) },
                           { label: "Delete", tone: "danger", onClick: () => handleDelete(p.id) },

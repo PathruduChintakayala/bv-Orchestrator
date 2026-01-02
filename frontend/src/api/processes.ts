@@ -84,6 +84,15 @@ export async function updateProcess(
   return toCamel(await res.json()) as Process;
 }
 
+export async function upgradeProcessToLatest(id: number): Promise<Process> {
+  const res = await fetch(`/api/processes/${id}/upgrade`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return toCamel(await res.json()) as Process;
+}
+
 export async function deleteProcess(id: number): Promise<void> {
   const res = await fetch(`/api/processes/${id}`, {
     method: "DELETE",
