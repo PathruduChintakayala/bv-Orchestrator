@@ -18,13 +18,56 @@ def now_iso():
     return datetime.now().isoformat(timespec='seconds')
 
 
+def _parse_semver(version: str) -> tuple[int, int, int]:
+    try:
+        parts = version.strip().split('.')
+        major, minor, patch = (int(parts[0]), int(parts[1]), int(parts[2]))
+        return major, minor, patch
+    except Exception:
+        # Fallback to treat invalid strings as 0.0.0 so we do not crash.
+        return 0, 0, 0
+
+
+def _latest_package_for_name(session, name: str) -> Optional[Package]:
+    if not name:
+        return None
+    pkgs = session.exec(select(Package).where(Package.name == name)).all()
+    if not pkgs:
+        return None
+    pkgs.sort(key=lambda p: _parse_semver(p.version), reverse=True)
+    return pkgs[0]
+
+
+def _recompute_package_active(session, pkg_id: Optional[int]):
+    """Ensure package.is_active reflects whether any processes reference it."""
+    if pkg_id is None:
+        return
+    pkg = session.exec(select(Package).where(Package.id == pkg_id)).first()
+    if not pkg:
+        return
+    has_process = session.exec(select(Process.id).where(Process.package_id == pkg_id)).first() is not None
+    new_active = bool(has_process)
+    if pkg.is_active != new_active:
+        pkg.is_active = new_active
+        pkg.updated_at = now_iso()
+        session.add(pkg)
+        session.commit()
+        session.refresh(pkg)
+
+
 def process_to_out(p: Process, session=None) -> dict:
     pkg_out = None
+    latest_version = None
+    upgrade_available = False
     if p.package_id and session is not None:
         pkg = session.exec(select(Package).where(Package.id == p.package_id)).first()
         if pkg:
             from backend.packages import to_out as pkg_to_out
-            pkg_out = pkg_to_out(pkg)
+            pkg_out = pkg_to_out(pkg, session)
+            latest_pkg = _latest_package_for_name(session, pkg.name)
+            if latest_pkg:
+                latest_version = latest_pkg.version
+                upgrade_available = _parse_semver(latest_pkg.version) > _parse_semver(pkg.version)
     return {
         "id": p.id,
         "name": p.name,
@@ -37,6 +80,8 @@ def process_to_out(p: Process, session=None) -> dict:
         "created_at": p.created_at,
         "updated_at": p.updated_at,
         "package": pkg_out,
+        "latest_version": latest_version,
+        "upgrade_available": upgrade_available,
     }
 
 
@@ -129,7 +174,8 @@ def create_process(payload: dict, request: Request, session=Depends(get_session)
     session.add(p)
     session.commit()
     session.refresh(p)
-    out = process_to_out(p)
+    _recompute_package_active(session, p.package_id)
+    out = process_to_out(p, session)
     try:
         log_event(session, action="process.create", entity_type="process", entity_id=p.id, entity_name=p.name, before=None, after=out, metadata=None, request=request, user=user)
     except Exception:
@@ -143,6 +189,7 @@ def update_process(process_id: int, payload: dict, request: Request, session=Dep
     if not p:
         raise HTTPException(status_code=404, detail="Process not found")
     before_out = process_to_out(p, session)
+    old_package_id = p.package_id
 
     definition_changed = False
 
@@ -203,6 +250,8 @@ def update_process(process_id: int, payload: dict, request: Request, session=Dep
     session.add(p)
     session.commit()
     session.refresh(p)
+    _recompute_package_active(session, old_package_id)
+    _recompute_package_active(session, p.package_id)
     after_out = process_to_out(p, session)
     try:
         changes = diff_dicts(before_out, after_out)
@@ -218,10 +267,53 @@ def delete_process(process_id: int, request: Request, session=Depends(get_sessio
     if not p:
         raise HTTPException(status_code=404, detail="Process not found")
     before_out = process_to_out(p, session)
+    pkg_id = p.package_id
     session.delete(p)
     session.commit()
+    _recompute_package_active(session, pkg_id)
     try:
         log_event(session, action="process.delete", entity_type="process", entity_id=process_id, entity_name=before_out.get("name"), before=before_out, after=None, metadata=None, request=request, user=user)
     except Exception:
         pass
     return None
+
+
+@router.post("/{process_id}/upgrade", dependencies=[Depends(get_current_user), Depends(require_permission("processes", "edit"))])
+def upgrade_process_to_latest(process_id: int, request: Request, session=Depends(get_session), user=Depends(get_current_user)):
+    p = session.exec(select(Process).where(Process.id == process_id)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Process not found")
+    if not p.package_id:
+        raise HTTPException(status_code=400, detail="Process is not associated with a package")
+    current_pkg = session.exec(select(Package).where(Package.id == p.package_id)).first()
+    if not current_pkg:
+        raise HTTPException(status_code=400, detail="Current package not found")
+
+    latest_pkg = _latest_package_for_name(session, current_pkg.name)
+    if not latest_pkg:
+        raise HTTPException(status_code=400, detail="No package versions found for this name")
+    if _parse_semver(latest_pkg.version) <= _parse_semver(current_pkg.version):
+        raise HTTPException(status_code=400, detail="Process already on latest version")
+
+    # Validate payload using existing rules to ensure entrypoint/script compatibility.
+    payload = {
+        "package_id": latest_pkg.id,
+        "entrypoint_name": getattr(p, "entrypoint_name", None),
+        "script_path": p.script_path,
+    }
+    normalized = _validate_process_payload(session, payload)
+    p.package_id = normalized["package_id"]
+    p.entrypoint_name = normalized["entrypoint_name"]
+    p.script_path = normalized["script_path"]
+    p.version = int(p.version or 1) + 1
+    p.updated_at = now_iso()
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    _recompute_package_active(session, p.package_id)
+    after_out = process_to_out(p, session)
+    try:
+        log_event(session, action="process.upgrade", entity_type="process", entity_id=p.id, entity_name=p.name, before=None, after=after_out, metadata={"from_version": current_pkg.version, "to_version": latest_pkg.version}, request=request, user=user)
+    except Exception:
+        pass
+    return after_out

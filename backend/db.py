@@ -111,6 +111,22 @@ def init_db():
             if "queue_item_ids" not in cols:
                 conn.exec_driver_sql("ALTER TABLE jobs ADD COLUMN queue_item_ids TEXT")
 
+            # JobExecutionLog: persisted host and process info
+            rows = conn.exec_driver_sql("PRAGMA table_info(job_execution_logs)").fetchall()
+            cols = {r[1] for r in rows}
+            if "process_id" not in cols:
+                conn.exec_driver_sql("ALTER TABLE job_execution_logs ADD COLUMN process_id INTEGER")
+            if "process_name" not in cols:
+                conn.exec_driver_sql("ALTER TABLE job_execution_logs ADD COLUMN process_name TEXT")
+            if "machine_id" not in cols:
+                conn.exec_driver_sql("ALTER TABLE job_execution_logs ADD COLUMN machine_id INTEGER")
+            if "machine_name" not in cols:
+                conn.exec_driver_sql("ALTER TABLE job_execution_logs ADD COLUMN machine_name TEXT")
+            if "host_name" not in cols:
+                conn.exec_driver_sql("ALTER TABLE job_execution_logs ADD COLUMN host_name TEXT")
+            if "host_identity" not in cols:
+                conn.exec_driver_sql("ALTER TABLE job_execution_logs ADD COLUMN host_identity TEXT")
+
             # Queues enhancements
             rows = conn.exec_driver_sql("PRAGMA table_info(queues)").fetchall()
             cols = {r[1] for r in rows}

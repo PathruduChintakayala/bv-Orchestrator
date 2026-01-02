@@ -7,7 +7,7 @@ from sqlmodel import select
 
 from backend.db import get_session
 from backend.auth import get_current_user
-from backend.models import Job, Process, Robot, Package, QueueItem
+from backend.models import Job, Process, Robot, Package, QueueItem, Machine
 from backend.audit_utils import log_event
 from backend.permissions import require_permission
 
@@ -72,10 +72,15 @@ def job_to_out(j: Job, session=None) -> dict:
         if j.robot_id:
             r = session.exec(select(Robot).where(Robot.id == j.robot_id)).first()
             if r:
+                machine_name = None
+                if r.machine_id:
+                    m = session.exec(select(Machine).where(Machine.id == r.machine_id)).first()
+                    machine_name = m.name if m else None
                 robot_out = {
                     "id": r.id,
                     "name": r.name,
                     "status": r.status,
+                    "machine_name": machine_name,
                     "machine_info": r.machine_info,
                     "last_heartbeat": r.last_heartbeat,
                     "current_job_id": r.current_job_id,

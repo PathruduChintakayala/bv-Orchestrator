@@ -35,12 +35,17 @@ def _validate_provisioning_credentials(*, machine: Optional[Machine], username: 
 def now_iso():
     return datetime.now().isoformat(timespec='seconds')
 
-def to_out(r: Robot) -> dict:
+def to_out(r: Robot, session) -> dict:
+    machine_name = None
+    if r.machine_id:
+        m = session.exec(select(Machine).where(Machine.id == r.machine_id)).first()
+        machine_name = m.name if m else None
     return {
         "id": r.id,
         "name": r.name,
         "status": r.status,
         "machine_id": r.machine_id,
+        "machine_name": machine_name,
         "machine_info": r.machine_info,
         "credential_asset_id": r.credential_asset_id,
         "last_heartbeat": r.last_heartbeat,
@@ -64,14 +69,14 @@ def list_robots(search: Optional[str] = None, status: Optional[str] = None, sess
             targets.append("disconnected")
         robots = [r for r in robots if (r.status or "").lower() in targets]
     robots.sort(key=lambda r: r.name.lower())
-    return [to_out(r) for r in robots]
+    return [to_out(r, session) for r in robots]
 
 @router.get("/{robot_id}", dependencies=[Depends(get_current_user), Depends(require_permission("robots", "view"))])
 def get_robot(robot_id: int, session=Depends(get_session)):
     r = session.exec(select(Robot).where(Robot.id == robot_id)).first()
     if not r:
         raise HTTPException(status_code=404, detail="Robot not found")
-    return to_out(r)
+    return to_out(r, session)
 
 @router.post("/", status_code=201, dependencies=[Depends(get_current_user), Depends(require_permission("robots", "create"))])
 def create_robot(payload: dict, request: Request, session=Depends(get_session), user=Depends(get_current_user)):
@@ -114,7 +119,7 @@ def create_robot(payload: dict, request: Request, session=Depends(get_session), 
     session.add(r)
     session.commit()
     session.refresh(r)
-    out = to_out(r)
+    out = to_out(r, session)
     try:
         log_event(session, action="robot.create", entity_type="robot", entity_id=r.id, entity_name=r.name, before=None, after=out, metadata=None, request=request, user=user)
     except Exception:
@@ -126,7 +131,7 @@ def update_robot(robot_id: int, payload: dict, request: Request, session=Depends
     r = session.exec(select(Robot).where(Robot.id == robot_id)).first()
     if not r:
         raise HTTPException(status_code=404, detail="Robot not found")
-    before_out = to_out(r)
+    before_out = to_out(r, session)
     if "status" in payload:
         raise HTTPException(status_code=400, detail="Robot status is managed by runner heartbeat")
     if "machine_info" in payload:
@@ -146,7 +151,7 @@ def update_robot(robot_id: int, payload: dict, request: Request, session=Depends
     session.add(r)
     session.commit()
     session.refresh(r)
-    after_out = to_out(r)
+    after_out = to_out(r, session)
     try:
         action = "robot.status_change" if before_out.get("status") != after_out.get("status") else "robot.update"
         log_event(session, action=action, entity_type="robot", entity_id=r.id, entity_name=r.name, before=before_out, after=after_out, metadata=None, request=request, user=user)
@@ -159,7 +164,7 @@ def delete_robot(robot_id: int, request: Request, session=Depends(get_session), 
     r = session.exec(select(Robot).where(Robot.id == robot_id)).first()
     if not r:
         raise HTTPException(status_code=404, detail="Robot not found")
-    before_out = to_out(r)
+    before_out = to_out(r, session)
     session.delete(r)
     session.commit()
     try:

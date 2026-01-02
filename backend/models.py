@@ -117,6 +117,12 @@ class JobExecutionLog(SQLModel, table=True):
     timestamp: datetime = Field(index=True)
     level: str = Field(index=True)
     message: str
+    process_id: Optional[int] = None
+    process_name: Optional[str] = None
+    machine_id: Optional[int] = None
+    machine_name: Optional[str] = None
+    host_name: Optional[str] = None  # Machine name at log creation time
+    host_identity: Optional[str] = None  # Robot username at log creation time
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 class Asset(SQLModel, table=True):

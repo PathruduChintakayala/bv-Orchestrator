@@ -13,7 +13,7 @@ from sqlmodel import select
 
 from backend.db import get_session
 from backend.auth import get_current_user
-from backend.models import Package
+from backend.models import Package, Process
 from backend.bvpackage import BvPackageValidationError, validate_and_extract_bvpackage
 from backend.audit_utils import log_event, diff_dicts
 from backend.robot_dependencies import get_current_robot
@@ -248,7 +248,25 @@ def _require_can_publish(session, *, name: str, version: str) -> None:
 def now_iso():
     return datetime.now().isoformat(timespec='seconds')
 
-def to_out(pkg: Package) -> dict:
+def recompute_package_active(session, pkg_id: Optional[int]) -> Optional[bool]:
+    """Re-evaluate whether a package version is active based on live process associations."""
+    if pkg_id is None:
+        return None
+    pkg = session.exec(select(Package).where(Package.id == pkg_id)).first()
+    if not pkg:
+        return None
+    has_process = session.exec(select(Process.id).where(Process.package_id == pkg_id)).first() is not None
+    new_active = bool(has_process)
+    if pkg.is_active != new_active:
+        pkg.is_active = new_active
+        pkg.updated_at = now_iso()
+        session.add(pkg)
+        session.commit()
+        session.refresh(pkg)
+    return new_active
+
+
+def to_out(pkg: Package, session=None) -> dict:
     scripts: List[str] = []
     try:
         scripts = json.loads(pkg.scripts_manifest or "[]")
@@ -259,6 +277,17 @@ def to_out(pkg: Package) -> dict:
         entrypoints = json.loads(pkg.entrypoints) if pkg.entrypoints else None
     except Exception:
         entrypoints = None
+    download_available = bool(getattr(pkg, "file_path", None) and os.path.exists(getattr(pkg, "file_path")))
+    download_url = None
+    if download_available and bool(getattr(pkg, "is_bvpackage", False)):
+        download_url = f"/api/packages/{pkg.id}/versions/{pkg.version}/download"
+    # Keep is_active derived from live process associations when a session is available.
+    active = pkg.is_active
+    if session is not None:
+        computed_active = recompute_package_active(session, pkg.id)
+        if computed_active is not None:
+            active = computed_active
+
     return {
         "id": pkg.id,
         "name": pkg.name,
@@ -266,12 +295,14 @@ def to_out(pkg: Package) -> dict:
         "is_bvpackage": bool(getattr(pkg, "is_bvpackage", False)),
         "entrypoints": entrypoints,
         "default_entrypoint": pkg.default_entrypoint,
-        "is_active": pkg.is_active,
+        "is_active": active,
         "hash": getattr(pkg, "hash", None),
         "size_bytes": getattr(pkg, "size_bytes", None),
         "scripts": scripts,
         "created_at": pkg.created_at,
         "updated_at": pkg.updated_at,
+        "download_url": download_url,
+        "download_available": download_available,
     }
 
 @router.post("/upload", dependencies=[Depends(get_current_user), Depends(require_permission("packages", "create"))])
@@ -392,7 +423,7 @@ def upload_package(
     session.add(pkg)
     session.commit()
     session.refresh(pkg)
-    out = to_out(pkg)
+    out = to_out(pkg, session)
     try:
         metadata = {"entrypoints": json.loads(entrypoints or "[]"), "default_entrypoint": default_entrypoint}
         log_event(session, action="package.upload", entity_type="package", entity_id=pkg.id, entity_name=f"{pkg.name}:{pkg.version}", before=None, after=out, metadata=metadata, request=request, user=user)
@@ -436,7 +467,7 @@ def list_packages(search: Optional[str] = None, active_only: Optional[bool] = No
             ensure_package_metadata(p, session)
         except Exception:
             pass
-        out.append(to_out(p))
+        out.append(to_out(p, session))
     return out
 
 @router.get("/{pkg_id}", dependencies=[Depends(get_current_user), Depends(require_permission("packages", "view"))])
@@ -448,7 +479,7 @@ def get_package(pkg_id: int, session=Depends(get_session)):
         ensure_package_metadata(p, session)
     except Exception:
         pass
-    return to_out(p)
+    return to_out(p, session)
 
 
 @router.get(
@@ -466,8 +497,52 @@ def get_package_version(pkg_id: int, version: str, session=Depends(get_session))
         "version": pkg.version,
         "hash": pkg.hash,
         "sizeBytes": pkg.size_bytes,
-        "downloadUrl": f"/api/packages/{pkg.id}/download",
+        "downloadUrl": f"/api/packages/{pkg.id}/versions/{pkg.version}/download",
     }
+
+
+@router.get(
+    "/{pkg_id}/versions/{version}/download",
+    dependencies=[Depends(get_current_user), Depends(require_permission("packages", "view"))],
+)
+def download_package_version(
+    pkg_id: int,
+    version: str,
+    request: Request,
+    session=Depends(get_session),
+    user=Depends(get_current_user),
+):
+    pkg = session.exec(select(Package).where(Package.id == pkg_id).where(Package.version == version)).first()
+    if not pkg or not pkg.file_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Package version not found")
+    if not bool(getattr(pkg, "is_bvpackage", False)):
+        raise HTTPException(status_code=400, detail=LEGACY_REBUILD_MESSAGE)
+    if not os.path.exists(pkg.file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Package file missing")
+
+    pkg = ensure_package_metadata(pkg, session, verify=True)
+    filename = f"{pkg.name}-{pkg.version}.bvpackage"
+    try:
+        log_event(
+            session,
+            action="package.download",
+            entity_type="package",
+            entity_id=pkg.id,
+            entity_name=f"{pkg.name}:{pkg.version}",
+            before=None,
+            after=None,
+            metadata={"size_bytes": getattr(pkg, "size_bytes", None)},
+            request=request,
+            user=user,
+        )
+    except Exception:
+        pass
+
+    return FileResponse(
+        pkg.file_path,
+        media_type="application/zip",
+        filename=filename,
+    )
 
 
 @router.get(
@@ -500,7 +575,7 @@ def update_package(pkg_id: int, payload: dict, request: Request, session=Depends
         raise HTTPException(status_code=404, detail="Package not found")
     if not bool(getattr(p, "is_bvpackage", False)):
         raise HTTPException(status_code=400, detail=LEGACY_REBUILD_MESSAGE)
-    before_out = to_out(p)
+    before_out = to_out(p, session)
     if "is_active" in payload and payload.get("is_active") is not None:
         p.is_active = bool(payload["is_active"])
     if "name" in payload and payload.get("name"):
@@ -526,7 +601,7 @@ def update_package(pkg_id: int, payload: dict, request: Request, session=Depends
     session.add(p)
     session.commit()
     session.refresh(p)
-    after_out = to_out(p)
+    after_out = to_out(p, session)
     try:
         changes = diff_dicts(before_out, after_out)
         log_event(session, action="package.update", entity_type="package", entity_id=p.id, entity_name=f"{p.name}:{p.version}", before=before_out, after=after_out, metadata={"changed_keys": list(changes.keys()), "diff": changes}, request=request, user=user)
@@ -539,7 +614,11 @@ def delete_package(pkg_id: int, request: Request, session=Depends(get_session), 
     p = session.exec(select(Package).where(Package.id == pkg_id)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Package not found")
-    before_out = to_out(p)
+    # Prevent deleting a package version that is still referenced by any process.
+    in_use = session.exec(select(Process.id).where(Process.package_id == pkg_id)).first()
+    if in_use:
+        raise HTTPException(status_code=400, detail="Cannot delete package version while processes still reference it")
+    before_out = to_out(p, session)
     # Best-effort delete zip
     try:
         if p.file_path and os.path.exists(p.file_path):

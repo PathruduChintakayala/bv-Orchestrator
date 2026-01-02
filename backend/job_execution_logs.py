@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from typing import List, Optional
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
@@ -8,7 +9,7 @@ from sqlmodel import Session, select
 
 from backend.auth import get_current_user
 from backend.db import get_session
-from backend.models import Job, JobExecutionLog, Robot
+from backend.models import Job, JobExecutionLog, Robot, Machine, Asset, Process
 from backend.permissions import require_permission
 from backend.robot_dependencies import get_current_robot
 
@@ -72,11 +73,44 @@ def add_job_execution_log(
     if not isinstance(message, str) or not message.strip():
         raise HTTPException(status_code=400, detail="message is required")
 
+    # Resolve host_name and host_identity at log creation time
+    host_name: Optional[str] = None
+    host_identity: Optional[str] = None
+    machine_id: Optional[int] = None
+    machine_name: Optional[str] = None
+    process_id: Optional[int] = None
+    process_name: Optional[str] = None
+    if current_robot.machine_id:
+        machine = session.exec(select(Machine).where(Machine.id == current_robot.machine_id)).first()
+        if machine:
+            host_name = machine.name
+            machine_id = machine.id
+            machine_name = machine.name
+    if current_robot.credential_asset_id:
+        asset = session.exec(select(Asset).where(Asset.id == current_robot.credential_asset_id)).first()
+        if asset and asset.type == "credential":
+            try:
+                cred_data = json.loads(asset.value or "{}")
+                host_identity = cred_data.get("username")
+            except Exception:
+                pass  # Ignore parsing errors, leave as None
+    if job.process_id:
+        process = session.exec(select(Process).where(Process.id == job.process_id)).first()
+        if process:
+            process_id = process.id
+            process_name = process.name
+
     entry = JobExecutionLog(
         job_execution_id=getattr(job, "execution_id", str(execution_id)),
         timestamp=ts,
         level=level_in,
         message=message.strip(),
+        process_id=process_id,
+        process_name=process_name,
+        machine_id=machine_id,
+        machine_name=machine_name,
+        host_name=host_name,
+        host_identity=host_identity,
     )
     try:
         session.add(entry)
@@ -157,6 +191,12 @@ def list_job_execution_logs(
             "timestamp": row.timestamp.isoformat(),
             "level": row.level,
             "message": row.message,
+            "process_id": row.process_id,
+            "process_name": row.process_name,
+            "machine_id": row.machine_id,
+            "machine_name": row.machine_name,
+            "host_name": row.host_name,
+            "host_identity": row.host_identity,
         }
         for row in rows
     ]
