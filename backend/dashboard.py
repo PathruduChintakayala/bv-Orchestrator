@@ -23,10 +23,13 @@ def get_overview(session=Depends(get_session), user=Depends(get_current_user)):
         jobs_today_failed = sum(1 for j in jobs_today if j.status == "failed")
         running_jobs = [j for j in jobs if j.status == "running"]
 
+        online_count = sum(1 for r in robots if (r.status or "").lower() in ("online", "connected"))
+        offline_count = sum(1 for r in robots if (r.status or "").lower() in ("offline", "disconnected"))
+
         summary = {
             "total_robots": len(robots),
-            "online_robots": sum(1 for r in robots if r.status == "online"),
-            "offline_robots": sum(1 for r in robots if r.status == "offline"),
+            "online_robots": online_count,
+            "offline_robots": offline_count,
             "jobs_today_total": len(jobs_today),
             "jobs_today_success": jobs_today_success,
             "jobs_today_failed": jobs_today_failed,
