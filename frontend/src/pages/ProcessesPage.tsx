@@ -25,19 +25,10 @@ export default function ProcessesPage() {
     if (!token) { window.location.hash = "#/"; return; }
     load();
     // preload active packages for selection
-    fetchPackages({ activeOnly: true }).then(setPackages).catch(()=>{});
+    fetchPackages().then(setPackages).catch(()=>{});
   }, []);
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.action-menu')) {
-        setMenuOpenId(null);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  // Context menu click-outside is handled within ActionMenu via portal, so no global listener here.
 
   async function load(s?: string) {
     try {

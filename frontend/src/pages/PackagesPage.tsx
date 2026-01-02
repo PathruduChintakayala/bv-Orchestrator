@@ -2,13 +2,10 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import type { ChangeEvent } from "react";
 import { createPortal } from "react-dom";
 import type { Package } from "../types/package";
-import type { Job } from "../types/job";
 import { fetchPackages, uploadPackage, deletePackage, downloadPackageVersion } from "../api/packages";
-import { fetchJobs } from "../api/jobs";
 
 export default function PackagesPage() {
   const [packages, setPackages] = useState<Package[]>([]);
-  const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -26,12 +23,8 @@ export default function PackagesPage() {
     try {
       setLoading(true);
       setError(null);
-      const [pkgData, jobData] = await Promise.all([
-        fetchPackages(s ? { search: s } : undefined),
-        fetchJobs(),
-      ]);
+      const pkgData = await fetchPackages(s ? { search: s } : undefined);
       setPackages(pkgData);
-      setJobs(jobData);
     } catch (e: any) {
       setError(e.message || "Failed to load packages");
     } finally {
@@ -85,10 +78,8 @@ export default function PackagesPage() {
   }
 
   function isActiveVersion(p: Package): boolean {
-    return jobs.some(j =>
-      (j.packageName === p.name && j.packageVersion === p.version) ||
-      (j.packageId === p.id && j.packageVersion === p.version)
-    );
+    // Backend now computes is_active based on live process associations; trust it here.
+    return Boolean(p.isActive);
   }
 
   function toggleSelect(id: number, active: boolean) {
@@ -253,17 +244,6 @@ function VersionsModal({
   onDeleteInactive: (name: string) => Promise<void>;
 }) {
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.action-menu')) {
-        setMenuOpenId(null);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   async function handleDownload(p: Package) {
     const filename = `${p.name}-${p.version}.bvpackage`;
