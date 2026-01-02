@@ -66,6 +66,21 @@ export async function deletePackage(id: number): Promise<void> {
   if (!res.ok) throw new Error(await readError(res));
 }
 
+export async function downloadPackageVersion(params: { packageId: number; version: string; filename?: string }): Promise<void> {
+  const { packageId, version, filename } = params;
+  const res = await fetch(`/api/packages/${packageId}/versions/${encodeURIComponent(version)}/download`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(await readError(res));
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename || `package-${packageId}-${version}.bvpackage`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
 export async function fetchEntrypointSignature(packageId: number, entrypointName: string): Promise<EntrypointParameter[]> {
   const res = await fetch(`/api/packages/${packageId}/entrypoints/${encodeURIComponent(entrypointName)}/signature`, { headers: authHeaders() });
   if (!res.ok) throw new Error(await readError(res));

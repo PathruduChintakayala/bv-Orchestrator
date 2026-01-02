@@ -89,7 +89,7 @@ export default function JobsPage() {
 
   async function handleTrigger(values: FormValues) {
     try {
-      const payload = { processId: values.processId!, robotId: values.robotId ?? null, parameters: null };
+      const payload = { processId: values.processId!, robotId: values.robotId ?? null, parameters: undefined };
       await createJob(payload);
       closeModal();
       await load();
@@ -131,7 +131,7 @@ export default function JobsPage() {
   }
 
   function hostname(j: Job) {
-    return j.robot?.machineInfo || j.robot?.name || "-";
+    return j.robot?.machineName || j.robot?.machineInfo || j.robot?.name || "-";
   }
 
   function stateBadge(j: Job) {
@@ -561,4 +561,3 @@ const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, bord
 const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBottom: 6 };
 const primaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#2563eb', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' };
 const secondaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#e5e7eb', color: '#111827', border: 'none', fontWeight: 600, cursor: 'pointer' };
-const dangerBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#dc2626', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' };

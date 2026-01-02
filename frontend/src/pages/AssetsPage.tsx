@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import type { Asset, AssetType } from "../types/assets";
 import { fetchAssets, createAsset, updateAsset, deleteAsset } from "../api/assets";
 
@@ -222,8 +223,11 @@ export default function AssetsPage() {
   );
 }
 
-type MenuAction = { label: string; onClick: () => void; tone?: "danger" };
+type MenuAction = { label: string; onClick: () => void; tone?: "danger"; disabled?: boolean };
 function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onToggle: () => void; onClose: () => void; actions: MenuAction[] }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -232,30 +236,93 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node) && buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open, onClose]);
+
+  const menuStyle = useMemo(() => {
+    if (!open || !buttonRef.current) return {};
+    const rect = buttonRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const menuHeight = actions.length * 40 + 16; // estimate height
+    const menuWidth = 180;
+
+    let top = rect.bottom + 8;
+    let left = rect.right - menuWidth; // align right edge
+
+    // If not enough space below, flip above
+    if (top + menuHeight > viewportHeight && rect.top - menuHeight - 8 > 0) {
+      top = rect.top - menuHeight - 8;
+    }
+
+    // If not enough space on right, align left
+    if (left < 0) {
+      left = rect.left;
+    }
+
+    // Ensure within viewport
+    if (left + menuWidth > viewportWidth) {
+      left = viewportWidth - menuWidth - 8;
+    }
+
+    return { position: 'fixed' as const, top, left, zIndex: 1000 };
+  }, [open, actions.length]);
+
   return (
-    <div className="action-menu">
+    <div style={{ position: "relative", display: "inline-block" }}>
       <button
+        ref={buttonRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={onToggle}
-        className="btn btn-ghost icon-button"
+        style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
       >
         ⋮
       </button>
-      {open && (
-        <div className="menu-panel" role="menu">
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          style={{
+            ...menuStyle,
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
+            borderRadius: 8,
+            minWidth: 180,
+            overflow: "hidden",
+          }}
+        >
           {actions.map((a) => (
             <button
               key={a.label}
               role="menuitem"
-              className={`menu-item ${a.tone === "danger" ? "danger" : ""}`}
-              onClick={() => { a.onClick(); onClose(); }}
+              disabled={a.disabled}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                background: "transparent",
+                border: "none",
+                cursor: a.disabled ? "not-allowed" : "pointer",
+                color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+              }}
+              onClick={() => { if (!a.disabled) { a.onClick(); onClose(); } }}
             >
               {a.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

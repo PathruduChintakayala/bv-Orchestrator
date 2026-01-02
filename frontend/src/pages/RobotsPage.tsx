@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import type { Robot, RobotStatus } from "../types/robot";
 import { fetchRobots, createRobot, updateRobot, deleteRobot } from "../api/robots";
 import { fetchMachines } from "../api/machines";
@@ -11,9 +12,21 @@ export default function RobotsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Robot | null>(null);
   const [search, setSearch] = useState("");
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
 
   useEffect(() => {
     load();
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.action-menu')) {
+        setMenuOpenId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   async function load(s?: string) {
@@ -101,10 +114,17 @@ export default function RobotsPage() {
                   </td>
                   <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.lastHeartbeat ? new Date(r.lastHeartbeat).toLocaleString() : '—'}</td>
                   <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.currentJobId ?? '—'}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'left', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.machineInfo ?? '—'}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'left', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.machineName ?? '—'}</td>
                   <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                    <button style={secondaryBtn} onClick={()=>openEdit(r)}>Edit</button>{' '}
-                    <button style={dangerBtn} onClick={()=>handleDelete(r.id)}>Delete</button>
+                    <ActionMenu
+                      open={menuOpenId === r.id}
+                      onToggle={() => setMenuOpenId(menuOpenId === r.id ? null : r.id)}
+                      onClose={() => setMenuOpenId(null)}
+                      actions={[
+                        { label: "Edit", onClick: () => openEdit(r) },
+                        { label: "Delete", tone: "danger" as const, onClick: () => handleDelete(r.id) },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
@@ -238,6 +258,111 @@ function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCa
           <button onClick={submit} disabled={saving} style={primaryBtn}>{saving ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+type MenuAction = { label: string; onClick: () => void; tone?: "danger"; disabled?: boolean };
+function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onToggle: () => void; onClose: () => void; actions: MenuAction[] }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node) && buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open, onClose]);
+
+  const menuStyle = useMemo(() => {
+    if (!open || !buttonRef.current) return {};
+    const rect = buttonRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const menuHeight = actions.length * 40 + 16; // estimate height
+    const menuWidth = 180;
+
+    let top = rect.bottom + 8;
+    let left = rect.right - menuWidth; // align right edge
+
+    // If not enough space below, flip above
+    if (top + menuHeight > viewportHeight && rect.top - menuHeight - 8 > 0) {
+      top = rect.top - menuHeight - 8;
+    }
+
+    // If not enough space on right, align left
+    if (left < 0) {
+      left = rect.left;
+    }
+
+    // Ensure within viewport
+    if (left + menuWidth > viewportWidth) {
+      left = viewportWidth - menuWidth - 8;
+    }
+
+    return { position: 'fixed' as const, top, left, zIndex: 1000 };
+  }, [open, actions.length]);
+
+  return (
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={onToggle}
+        style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
+      >
+        ⋮
+      </button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          style={{
+            ...menuStyle,
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
+            borderRadius: 8,
+            minWidth: 180,
+            overflow: "hidden",
+          }}
+        >
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              role="menuitem"
+              disabled={a.disabled}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                background: "transparent",
+                border: "none",
+                cursor: a.disabled ? "not-allowed" : "pointer",
+                color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+              }}
+              onClick={() => { if (!a.disabled) { a.onClick(); onClose(); } }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

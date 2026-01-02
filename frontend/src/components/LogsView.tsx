@@ -122,8 +122,8 @@ export default function LogsView({ scope, jobExecutionId, jobId, initialProcessI
           processId: job?.processId,
           processName: job?.process?.name || undefined,
           machineId: job?.robot?.machineId,
-          machineName: job?.robot?.name,
-          hostIdentity: job?.robot?.machineInfo || undefined,
+          machineName: r.host_name || undefined,
+          hostIdentity: r.host_identity || undefined,
         }))
         setLogs(mapped)
         setTotal(mapped.length)
@@ -176,8 +176,8 @@ export default function LogsView({ scope, jobExecutionId, jobId, initialProcessI
             processId: job?.processId,
             processName: job?.process?.name || undefined,
             machineId: job?.robot?.machineId,
-            machineName: job?.robot?.name,
-            hostIdentity: job?.robot?.machineInfo || undefined,
+            machineName: r.host_name || undefined,
+            hostIdentity: r.host_identity || undefined,
           }))
           exportCsv(mapped, `job_${jobExecutionId}_logs_${now}.csv`)
         })

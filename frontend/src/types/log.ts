@@ -7,4 +7,5 @@ export interface LogEntry {
   machineId?: number | null;
   machineName?: string | null;
   hostIdentity?: string | null;
+  host_name?: string | null;
 }

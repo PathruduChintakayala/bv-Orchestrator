@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import type { ChangeEvent } from "react";
+import { createPortal } from "react-dom";
 import type { Package } from "../types/package";
 import type { Job } from "../types/job";
-import { fetchPackages, uploadPackage, deletePackage } from "../api/packages";
+import { fetchPackages, uploadPackage, deletePackage, downloadPackageVersion } from "../api/packages";
 import { fetchJobs } from "../api/jobs";
 
 export default function PackagesPage() {
@@ -251,6 +252,27 @@ function VersionsModal({
   onBulkDelete: (name: string) => Promise<void>;
   onDeleteInactive: (name: string) => Promise<void>;
 }) {
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.action-menu')) {
+        setMenuOpenId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  async function handleDownload(p: Package) {
+    const filename = `${p.name}-${p.version}.bvpackage`;
+    try {
+      await downloadPackageVersion({ packageId: p.id, version: p.version, filename });
+    } catch (e: any) {
+      alert(e.message || "Download failed");
+    }
+  }
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center', zIndex: 20 }}>
       <div style={{ width: '100%', maxWidth: 900, background: '#fff', borderRadius: 16, boxShadow: '0 12px 30px rgba(0,0,0,0.18)', padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -285,6 +307,7 @@ function VersionsModal({
               {versions.map(v => {
                 const active = isActive(v);
                 const disabled = active;
+                const canDownload = Boolean(v.downloadAvailable ?? v.isBvpackage);
                 return (
                   <tr key={v.id} style={{ fontSize: 14, color: '#111827' }}>
                     <td style={{ padding: '6px 0', width: 36 }}>
@@ -301,13 +324,15 @@ function VersionsModal({
                     </td>
                     <td style={{ padding: '6px 0' }}>{new Date(v.updatedAt).toLocaleString()}</td>
                     <td style={{ padding: '6px 0' }}>
-                      <button
-                        style={{ ...dangerBtn, opacity: disabled ? 0.5 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}
-                        onClick={()=>onDelete(v, active)}
-                        disabled={disabled}
-                      >
-                        Delete
-                      </button>
+                      <ActionMenu
+                        open={menuOpenId === v.id}
+                        onToggle={() => setMenuOpenId(menuOpenId === v.id ? null : v.id)}
+                        onClose={() => setMenuOpenId(null)}
+                        actions={[
+                          { label: "Download", onClick: () => handleDownload(v), disabled: !canDownload },
+                          { label: "Delete", tone: "danger" as const, onClick: () => onDelete(v, active), disabled: disabled },
+                        ]}
+                      />
                     </td>
                   </tr>
                 );
@@ -371,6 +396,111 @@ function UploadModal({ onCancel, onSave }: { onCancel: ()=>void; onSave:(v:Uploa
 type UploadValues = {
   file: File | null;
 };
+
+type MenuAction = { label: string; onClick: () => void; tone?: "danger"; disabled?: boolean };
+function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onToggle: () => void; onClose: () => void; actions: MenuAction[] }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node) && buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open, onClose]);
+
+  const menuStyle = useMemo(() => {
+    if (!open || !buttonRef.current) return {};
+    const rect = buttonRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const menuHeight = actions.length * 40 + 16; // estimate height
+    const menuWidth = 180;
+
+    let top = rect.bottom + 8;
+    let left = rect.right - menuWidth; // align right edge
+
+    // If not enough space below, flip above
+    if (top + menuHeight > viewportHeight && rect.top - menuHeight - 8 > 0) {
+      top = rect.top - menuHeight - 8;
+    }
+
+    // If not enough space on right, align left
+    if (left < 0) {
+      left = rect.left;
+    }
+
+    // Ensure within viewport
+    if (left + menuWidth > viewportWidth) {
+      left = viewportWidth - menuWidth - 8;
+    }
+
+    return { position: 'fixed' as const, top, left, zIndex: 1000 };
+  }, [open, actions.length]);
+
+  return (
+    <div className="action-menu" style={{ position: "relative", display: "inline-block" }}>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={onToggle}
+        style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
+      >
+        ⋮
+      </button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          style={{
+            ...menuStyle,
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
+            borderRadius: 8,
+            minWidth: 180,
+            overflow: "hidden",
+          }}
+        >
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              role="menuitem"
+              disabled={a.disabled}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                background: "transparent",
+                border: "none",
+                cursor: a.disabled ? "not-allowed" : "pointer",
+                color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+              }}
+              onClick={() => { if (!a.disabled) { a.onClick(); onClose(); } }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
 
 const input: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', width: '100%', maxWidth: '100%', boxSizing: 'border-box' };
 const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBottom: 6 };
