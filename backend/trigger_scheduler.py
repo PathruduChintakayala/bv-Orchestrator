@@ -11,6 +11,8 @@ from sqlmodel import Session, select
 from backend.db import engine
 from backend.models import Trigger, TriggerType, Process, Package, Job, JobExecutionLog, QueueItem
 
+from backend.redis_client import redis_client
+
 log = logging.getLogger("trigger.scheduler")
 
 
@@ -94,6 +96,8 @@ class TriggerScheduler:
         self.interval = interval_seconds
         self._task: Optional[asyncio.Task] = None
         self._stopped = False
+        self._lock_key = "trigger_scheduler_lock"
+        self._lock_timeout = interval_seconds + 5
 
     def start(self):
         if self._task and not self._task.done():
@@ -111,10 +115,14 @@ class TriggerScheduler:
 
     async def _run(self):
         while not self._stopped:
-            try:
-                await self._tick()
-            except Exception as e:
-                log.exception("Trigger scheduler tick failed: %s", e)
+            # Try to acquire distributed lock
+            if redis_client._client.set(self._lock_key, "1", nx=True, ex=self._lock_timeout):
+                try:
+                    await self._tick()
+                except Exception as e:
+                    log.exception("Trigger scheduler tick failed: %s", e)
+            else:
+                log.debug("Another instance is running the scheduler")
             await asyncio.sleep(self.interval)
 
     async def _tick(self):

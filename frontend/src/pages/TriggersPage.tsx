@@ -22,7 +22,6 @@ export default function TriggersPage() {
   const [robots, setRobots] = useState<Robot[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [toggling, setToggling] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Trigger | null>(null)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
@@ -72,7 +71,6 @@ export default function TriggersPage() {
 
   async function toggleTrigger(t: Trigger, nextEnabled: boolean) {
     try {
-      setToggling(t.id)
       if (nextEnabled) {
         await enableTrigger(t.id)
       } else {
@@ -81,8 +79,6 @@ export default function TriggersPage() {
       await load()
     } catch (e: any) {
       alert(e.message || "Action failed")
-    } finally {
-      setToggling(null)
     }
   }
 

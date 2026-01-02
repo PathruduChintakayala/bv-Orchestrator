@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: bv-db
+    restart: always
+    environment:
+      POSTGRES_USER: bvuser
+      POSTGRES_PASSWORD: bvpassword
+      POSTGRES_DB: bv_orchestrator
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: bv-redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bv-backend
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://bvuser:bvpassword@db:5432/bv_orchestrator
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=dev-secret-change-me
+    depends_on:
+      - db
+      - redis
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/packages_store:/app/backend/packages_store
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: bv-frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  postgres_data:

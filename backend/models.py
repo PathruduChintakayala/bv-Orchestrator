@@ -1,4 +1,6 @@
-from typing import Optional
+from __future__ import annotations
+
+from typing import Optional, Annotated
 from datetime import datetime
 from uuid import uuid4
 from sqlalchemy import Index
@@ -61,7 +63,9 @@ class Robot(SQLModel, table=True):
     current_job_id: Optional[int] = None
     machine_id: Optional[int] = Field(default=None, index=True)
     machine_info: Optional[str] = None
-    credential_asset_id: Optional[int] = Field(default=None, index=True)
+    credential_asset_id: Optional[int] = Field(default=None, index=True)  # Deprecated, kept for backward compatibility
+    username: Optional[str] = None  # Windows username (plain text, e.g., "DOMAIN\username" or "username")
+    password_hash: Optional[str] = None  # Windows password hash (bcrypt)
     api_token: Optional[str] = None
     created_at: str
     updated_at: str
