@@ -1,5 +1,5 @@
 from typing import List, Optional, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Header
 from sqlmodel import Session, select
 from backend.db import get_session
 from backend.auth import get_current_user
@@ -7,12 +7,64 @@ from backend.models import QueueItem, Queue
 from datetime import datetime
 import json
 from backend.audit_utils import log_event
-from backend.permissions import require_permission
+from backend.permissions import require_permission, has_permission
 from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
-from sqlalchemy.exc import IntegrityError
 
 router = APIRouter(prefix="/queue-items", tags=["queue-items"])
+
+
+def get_runtime_auth(
+    request: Request,
+    session = Depends(get_session),
+    x_robot_token: Optional[str] = Header(None, alias="X-Robot-Token")
+) -> Any:
+    """Check for either a valid user session or a robot token (reused from assets)."""
+    # 1. Try Robot Token
+    if x_robot_token:
+        from backend.models import Robot
+        robot = session.exec(select(Robot).where(Robot.api_token == x_robot_token)).first()
+        if robot:
+            return robot
+
+    # 2. Try User Token (Standard Auth)
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        try:
+            from backend.auth import SECRET_KEY, ALGORITHM
+            from jose import jwt
+            from backend.models import User
+            
+            token = auth_header.split(" ")[1]
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            username = payload.get("sub")
+            if username:
+                user = session.exec(select(User).where(User.username == username)).first()
+                if user:
+                    # Check appropriate permission based on HTTP method
+                    method = request.method.upper()
+                    path = request.url.path
+                    if method == "POST":
+                        # For create operations, check create permission
+                        if has_permission(session, user, "queue_items", "create"):
+                            return user
+                        raise HTTPException(status_code=403, detail="Insufficient permissions: 'queue_items:create' required")
+                    elif method in ("PUT", "DELETE"):
+                        # For update/delete operations, check edit permission
+                        if has_permission(session, user, "queue_items", "edit"):
+                            return user
+                        raise HTTPException(status_code=403, detail="Insufficient permissions: 'queue_items:edit' required")
+                    else:
+                        # For read operations, check view permission
+                        if has_permission(session, user, "queue_items", "view"):
+                            return user
+                        raise HTTPException(status_code=403, detail="Insufficient permissions: 'queue_items:view' required")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    raise HTTPException(status_code=401, detail="Valid user or robot token required")
 
 
 class CreateQueueItemRequest(BaseModel):
@@ -46,6 +98,47 @@ def list_items(
         q = q.where(QueueItem.status == status)
     items = session.exec(q).all()
     return items
+
+
+# IMPORTANT: /next must be defined BEFORE /{item_id} to avoid routing conflict
+@router.get("/next")
+def get_next_item(
+    queue_name: Optional[str] = Query(None),
+    queue_id: Optional[int] = Query(None),
+    session: Session = Depends(get_session),
+    auth=Depends(get_runtime_auth)
+):
+    if not queue_name and queue_id is None:
+        raise HTTPException(status_code=400, detail="queue_name or queue_id required")
+    
+    if queue_id is None:
+        queue = session.exec(select(Queue).where(Queue.name == queue_name)).first()
+        if not queue:
+            raise HTTPException(status_code=404, detail="Queue not found")
+        queue_id = queue.id
+
+    # Atomic find and lock (simplistic implementation using status update)
+    item = session.exec(
+        select(QueueItem)
+        .where(QueueItem.queue_id == queue_id, QueueItem.status == "NEW")
+        .order_by(QueueItem.priority.desc(), QueueItem.created_at.asc())
+    ).first()
+
+    if not item:
+        raise HTTPException(status_code=404, detail="No NEW items available in queue")
+
+    item.status = "IN_PROGRESS"
+    item.updated_at = utcnow_iso()
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    
+    return {
+        "id": item.id,
+        "payload": json.loads(item.payload) if isinstance(item.payload, str) else item.payload,
+        "reference": item.reference,
+        "priority": item.priority
+    }
 
 
 @router.get("/{item_id}", response_model=QueueItem, dependencies=[Depends(require_permission("queue_items", "view"))])
@@ -142,3 +235,77 @@ def delete_item(item_id: str, request: Request, session: Session = Depends(get_s
     except Exception:
         pass
     return None
+
+
+class RuntimeAddRequest(BaseModel):
+    queue_name: str
+    payload: dict
+    reference: Optional[str] = None
+
+
+@router.post("/add")
+def add_item_runtime(
+    req: RuntimeAddRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+    auth=Depends(get_runtime_auth)
+):
+    queue = session.exec(select(Queue).where(Queue.name == req.queue_name)).first()
+    if not queue:
+        raise HTTPException(status_code=404, detail="Queue not found")
+    
+    # Check reference uniqueness if enabled
+    if queue.enforce_unique_reference and req.reference:
+        existing = session.exec(select(QueueItem).where(QueueItem.queue_id == queue.id, QueueItem.reference == req.reference)).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Reference already exists")
+
+    now = utcnow_iso()
+    item = QueueItem(
+        queue_id=queue.id,
+        reference=req.reference,
+        status="NEW",
+        payload=json.dumps(req.payload),
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    
+    return {"id": item.id}
+
+
+@router.put("/{item_id}/status")
+def set_item_status_runtime(
+    item_id: str,
+    payload: UpdateQueueItemRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+    auth=Depends(get_runtime_auth)
+):
+    item = session.get(QueueItem, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+    
+    before_status = item.status
+    if payload.status:
+        item.status = payload.status
+    if payload.result is not None:
+        item.result = json.dumps(payload.result) if isinstance(payload.result, (dict, list)) else str(payload.result)
+    if payload.error_message is not None:
+        item.error_message = payload.error_message
+    
+    item.updated_at = utcnow_iso()
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+
+    try:
+        actor_name = getattr(auth, "username", None) or getattr(auth, "name", "system")
+        if before_status != item.status:
+            log_event(session, action="queue_item.status_change", entity_type="queue_item", entity_id=item.id, entity_name=str(item.reference or item.id), before={"status": before_status}, after={"status": item.status}, metadata={"status_from": before_status, "status_to": item.status}, request=request, actor_username=actor_name)
+    except Exception:
+        pass
+
+    return {"id": item.id, "status": item.status}

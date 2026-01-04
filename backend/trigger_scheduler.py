@@ -60,6 +60,17 @@ def _create_job_for_trigger(session: Session, trigger: Trigger, queue_item_ids: 
         raise ValueError("Process not found for trigger")
     pkg = session.exec(select(Package).where(Package.id == proc.package_id)).first() if proc.package_id else None
     qids_json = json.dumps(queue_item_ids) if queue_item_ids else None
+    
+    # Optionally set machine_name if trigger has a robot with a machine
+    machine_name = None
+    if trigger.robot_id:
+        from backend.models import Robot, Machine
+        r = session.exec(select(Robot).where(Robot.id == trigger.robot_id)).first()
+        if r and r.machine_id:
+            m = session.exec(select(Machine).where(Machine.id == r.machine_id)).first()
+            if m:
+                machine_name = m.name
+    
     j = Job(
         process_id=proc.id,
         package_id=proc.package_id,
@@ -70,6 +81,7 @@ def _create_job_for_trigger(session: Session, trigger: Trigger, queue_item_ids: 
         trigger_id=trigger.id,
         queue_item_ids=qids_json,
         robot_id=trigger.robot_id,
+        machine_name=machine_name,  # Set if robot has a machine (will be updated when job starts)
         status="pending",
         parameters=None,
         created_at=iso(now_utc()),

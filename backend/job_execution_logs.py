@@ -1,16 +1,16 @@
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Any
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, Header
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 
 from backend.auth import get_current_user
 from backend.db import get_session
 from backend.models import Job, JobExecutionLog, Robot, Machine, Asset, Process
-from backend.permissions import require_permission
+from backend.permissions import require_permission, has_permission
 from backend.robot_dependencies import get_current_robot
 
 router = APIRouter(prefix="/job-executions", tags=["job-executions"])
@@ -49,16 +49,79 @@ def _get_job_or_404(session: Session, execution_id: str) -> Job:
     return job
 
 
+def get_runtime_auth(
+    request: Request,
+    session: Session = Depends(get_session),
+    x_robot_token: Optional[str] = Header(None, alias="X-Robot-Token")
+) -> Any:
+    """Check for either a valid user session or a robot token."""
+    # 1. Try Robot Token
+    if x_robot_token:
+        robot = session.exec(select(Robot).where(Robot.api_token == x_robot_token)).first()
+        if robot:
+            return robot
+
+    # 2. Try User Token (Standard Auth)
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        try:
+            from backend.auth import SECRET_KEY, ALGORITHM
+            from jose import jwt
+            from backend.models import User
+            
+            if not auth_header.startswith("Bearer "):
+                raise HTTPException(status_code=401, detail="Authorization header must start with 'Bearer '")
+            
+            token = auth_header.split(" ", 1)[1].strip()
+            if not token:
+                raise HTTPException(status_code=401, detail="Token is missing")
+            
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            username = payload.get("sub")
+            if not username:
+                raise HTTPException(status_code=401, detail="Token missing 'sub' claim")
+            
+            user = session.exec(select(User).where(User.username == username)).first()
+            if not user:
+                raise HTTPException(status_code=401, detail=f"User '{username}' not found")
+            
+            # For logging, users need jobs:view permission
+            if has_permission(session, user, "jobs", "view"):
+                return user
+            raise HTTPException(status_code=403, detail="Insufficient permissions: 'jobs:view' required")
+        except HTTPException:
+            raise
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="Token has expired")
+        except jwt.JWTError as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+        except Exception as e:
+            import logging
+            logging.error(f"Error in get_runtime_auth for job_execution_logs: {type(e).__name__}: {str(e)}")
+            raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+
+    raise HTTPException(status_code=401, detail="Valid user or robot token required")
+
+
 @router.post("/{execution_id}/logs", status_code=status.HTTP_202_ACCEPTED)
 def add_job_execution_log(
     execution_id: str,
     payload: dict,
+    request: Request,
     session: Session = Depends(get_session),
-    current_robot: Robot = Depends(get_current_robot),
+    auth=Depends(get_runtime_auth),
 ):
     job = _get_job_or_404(session, execution_id)
-    if job.robot_id is not None and int(job.robot_id) != int(current_robot.id):
-        raise HTTPException(status_code=403, detail="Job not assigned to this robot")
+    
+    # Validate job access based on auth type
+    if isinstance(auth, Robot):
+        # For robots: job must be assigned to this robot (or unassigned)
+        if job.robot_id is not None and int(job.robot_id) != int(auth.id):
+            raise HTTPException(status_code=403, detail="Job not assigned to this robot")
+        current_robot = auth
+    else:
+        # For users: job must exist and user must have permission (already checked in get_runtime_auth)
+        current_robot = None
 
     try:
         ts = _parse_iso_timestamp(payload.get("timestamp"))
@@ -80,24 +143,31 @@ def add_job_execution_log(
     machine_name: Optional[str] = None
     process_id: Optional[int] = None
     process_name: Optional[str] = None
-    if current_robot.machine_id:
-        machine = session.exec(select(Machine).where(Machine.id == current_robot.machine_id)).first()
-        if machine:
-            host_name = machine.name
-            machine_id = machine.id
-            machine_name = machine.name
-    # Use username from robot table as host_identity (preferred)
-    if current_robot.username:
-        host_identity = current_robot.username
-    # Fallback to credential_asset_id for backward compatibility
-    elif current_robot.credential_asset_id:
-        asset = session.exec(select(Asset).where(Asset.id == current_robot.credential_asset_id)).first()
-        if asset and asset.type == "credential":
-            try:
-                cred_data = json.loads(asset.value or "{}")
-                host_identity = cred_data.get("username")
-            except Exception:
-                pass  # Ignore parsing errors, leave as None
+    
+    if current_robot:
+        # Robot authentication: resolve machine and identity from robot
+        if current_robot.machine_id:
+            machine = session.exec(select(Machine).where(Machine.id == current_robot.machine_id)).first()
+            if machine:
+                host_name = machine.name
+                machine_id = machine.id
+                machine_name = machine.name
+        # Use username from robot table as host_identity (preferred)
+        if current_robot.username:
+            host_identity = current_robot.username
+        # Fallback to credential_asset_id for backward compatibility
+        elif current_robot.credential_asset_id:
+            asset = session.exec(select(Asset).where(Asset.id == current_robot.credential_asset_id)).first()
+            if asset and asset.type == "credential":
+                try:
+                    cred_data = json.loads(asset.value or "{}")
+                    host_identity = cred_data.get("username")
+                except Exception:
+                    pass  # Ignore parsing errors, leave as None
+    else:
+        # User authentication: use user's username as host_identity
+        if hasattr(auth, "username"):
+            host_identity = auth.username
     if job.process_id:
         process = session.exec(select(Process).where(Process.id == job.process_id)).first()
         if process:
@@ -195,12 +265,12 @@ def list_job_execution_logs(
             "timestamp": row.timestamp.isoformat(),
             "level": row.level,
             "message": row.message,
-            "process_id": row.process_id,
-            "process_name": row.process_name,
-            "machine_id": row.machine_id,
-            "machine_name": row.machine_name,
-            "host_name": row.host_name,
-            "host_identity": row.host_identity,
+            "processId": row.process_id,
+            "processName": row.process_name,
+            "machineId": row.machine_id,
+            "machineName": row.machine_name,
+            "hostName": row.host_name,
+            "hostIdentity": row.host_identity,
         }
         for row in rows
     ]

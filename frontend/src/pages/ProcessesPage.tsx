@@ -25,7 +25,7 @@ export default function ProcessesPage() {
     if (!token) { window.location.hash = "#/"; return; }
     load();
     // preload active packages for selection
-    fetchPackages().then(setPackages).catch(()=>{});
+    fetchPackages().then(setPackages).catch(() => { });
   }, []);
 
   // Context menu click-outside is handled within ActionMenu via portal, so no global listener here.
@@ -394,13 +394,13 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
   }, [open, actions.length]);
 
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
+    <div className="action-menu" style={{ position: "relative", display: "inline-block" }}>
       <button
         ref={buttonRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={onToggle}
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
         style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
       >
         ⋮
@@ -409,6 +409,7 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
         <div
           ref={menuRef}
           role="menu"
+          className="action-menu"
           style={{
             ...menuStyle,
             background: "#fff",
@@ -417,9 +418,11 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
             borderRadius: 8,
             minWidth: 180,
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          {actions.map((a) => (
+          {actions.map((a, index) => (
             <button
               key={a.label}
               role="menuitem"
@@ -430,10 +433,23 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
                 padding: "10px 12px",
                 background: "transparent",
                 border: "none",
+                borderBottom: index < actions.length - 1 ? "1px solid #e5e7eb" : "none",
                 cursor: a.disabled ? "not-allowed" : "pointer",
                 color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+                display: "block",
               }}
-              onClick={() => { if (!a.disabled) { a.onClick(); onClose(); } }}
+              onMouseEnter={(e) => {
+                if (!a.disabled) {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!a.disabled) { a.onClick(); onClose(); }
+              }}
             >
               {a.label}
             </button>
@@ -445,249 +461,249 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
   );
 }
 
-function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Process | null; onCancel: ()=>void; onSave:(v:FormValues)=>void; packages: import('../types/package').Package[] }) {
-    const [saving, setSaving] = useState(false);
-    const [packageName, setPackageName] = useState<string | undefined>(initial?.package?.name);
-    const [packageVersion, setPackageVersion] = useState<string | undefined>(initial?.package?.version);
-    const [entrypointName, setEntrypointName] = useState<string | undefined>(initial?.entrypointName || undefined);
+function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Process | null; onCancel: () => void; onSave: (v: FormValues) => void; packages: import('../types/package').Package[] }) {
+  const [saving, setSaving] = useState(false);
+  const [packageName, setPackageName] = useState<string | undefined>(initial?.package?.name);
+  const [packageVersion, setPackageVersion] = useState<string | undefined>(initial?.package?.version);
+  const [entrypointName, setEntrypointName] = useState<string | undefined>(initial?.entrypointName || undefined);
 
-    const packageNames = useMemo(() => {
-      const set = new Set<string>();
-      packages.forEach((p) => set.add(p.name));
-      return Array.from(set).sort((a, b) => a.localeCompare(b));
-    }, [packages]);
+  const packageNames = useMemo(() => {
+    const set = new Set<string>();
+    packages.forEach((p) => set.add(p.name));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [packages]);
 
-    const versionsForSelected = useMemo(() => {
-      if (!packageName) return [];
-      return packages.filter((p) => p.name === packageName).map((p) => p.version).sort();
-    }, [packages, packageName]);
+  const versionsForSelected = useMemo(() => {
+    if (!packageName) return [];
+    return packages.filter((p) => p.name === packageName).map((p) => p.version).sort();
+  }, [packages, packageName]);
 
-    const selectedPackage = useMemo(() => {
-      if (!packageName || !packageVersion) return undefined;
-      return packages.find((p) => p.name === packageName && p.version === packageVersion);
-    }, [packages, packageName, packageVersion]);
+  const selectedPackage = useMemo(() => {
+    if (!packageName || !packageVersion) return undefined;
+    return packages.find((p) => p.name === packageName && p.version === packageVersion);
+  }, [packages, packageName, packageVersion]);
 
-    const entrypoints = useMemo(() => selectedPackage?.entrypoints || [], [selectedPackage]);
+  const entrypoints = useMemo(() => selectedPackage?.entrypoints || [], [selectedPackage]);
 
-    const [form, setForm] = useState<FormValues>({
-      name: initial?.name || "",
-      isActive: initial?.isActive ?? true,
-      scriptPath: initial?.scriptPath || "",
-      entrypointName: initial?.entrypointName || "",
-      packageId: initial?.packageId ?? undefined,
-      isBv: !!selectedPackage?.isBvpackage,
-      description: initial?.description || "",
-    });
+  const [form, setForm] = useState<FormValues>({
+    name: initial?.name || "",
+    isActive: initial?.isActive ?? true,
+    scriptPath: initial?.scriptPath || "",
+    entrypointName: initial?.entrypointName || "",
+    packageId: initial?.packageId ?? undefined,
+    isBv: !!selectedPackage?.isBvpackage,
+    description: initial?.description || "",
+  });
 
-    useEffect(() => {
-      const isBv = !!selectedPackage?.isBvpackage;
-      const defaultEp = entrypoints.find((e) => e.name === selectedPackage?.defaultEntrypoint)?.name || entrypoints.find((e) => e.default)?.name || entrypoints[0]?.name || "";
-      setForm((prev) => ({
-        ...prev,
+  useEffect(() => {
+    const isBv = !!selectedPackage?.isBvpackage;
+    const defaultEp = entrypoints.find((e) => e.name === selectedPackage?.defaultEntrypoint)?.name || entrypoints.find((e) => e.default)?.name || entrypoints[0]?.name || "";
+    setForm((prev) => ({
+      ...prev,
+      packageId: selectedPackage?.id,
+      isBv,
+      entrypointName: isBv ? (entrypointName || defaultEp || "") : "",
+      scriptPath: isBv ? "" : prev.scriptPath,
+    }));
+    if (isBv && !entrypointName) {
+      setEntrypointName(defaultEp || undefined);
+    }
+  }, [selectedPackage, entrypoints, entrypointName]);
+
+  function handleNameChange(val: string) {
+    setForm((prev) => ({ ...prev, name: val }));
+  }
+
+  function handleScriptPathChange(val: string) {
+    setForm((prev) => ({ ...prev, scriptPath: val }));
+  }
+
+  function handleDescriptionChange(val: string) {
+    setForm((prev) => ({ ...prev, description: val }));
+  }
+
+  function toggleActive() {
+    setForm((prev) => ({ ...prev, isActive: !prev.isActive }));
+  }
+
+  function selectPackage(name?: string) {
+    setPackageName(name || undefined);
+    setPackageVersion(undefined);
+    setEntrypointName(undefined);
+  }
+
+  function selectVersion(version?: string) {
+    setPackageVersion(version || undefined);
+    setEntrypointName(undefined);
+  }
+
+  function selectEntrypoint(ep?: string) {
+    setEntrypointName(ep || undefined);
+    setForm((prev) => ({ ...prev, entrypointName: ep || "" }));
+  }
+
+  async function submit() {
+    if (!form.name.trim()) { alert('Name is required'); return; }
+    if (selectedPackage?.isBvpackage) {
+      if (!packageName || !packageVersion || !selectedPackage?.id) { alert('Package and version are required'); return; }
+      if (!entrypointName) { alert('Entrypoint is required'); return; }
+    } else {
+      if (!form.scriptPath.trim()) { alert('Script Path is required'); return; }
+    }
+    try {
+      setSaving(true);
+      await onSave({
+        ...form,
         packageId: selectedPackage?.id,
-        isBv,
-        entrypointName: isBv ? (entrypointName || defaultEp || "") : "",
-        scriptPath: isBv ? "" : prev.scriptPath,
-      }));
-      if (isBv && !entrypointName) {
-        setEntrypointName(defaultEp || undefined);
-      }
-    }, [selectedPackage, entrypoints, entrypointName]);
-
-    function handleNameChange(val: string) {
-      setForm((prev) => ({ ...prev, name: val }));
+        entrypointName: selectedPackage?.isBvpackage ? entrypointName || '' : '',
+        isBv: !!selectedPackage?.isBvpackage,
+      });
+    } finally {
+      setSaving(false);
     }
+  }
 
-    function handleScriptPathChange(val: string) {
-      setForm((prev) => ({ ...prev, scriptPath: val }));
-    }
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
+      <div style={{
+        width: '100%',
+        maxWidth: 680,
+        background: '#fff',
+        borderRadius: 16,
+        boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+        padding: 24,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+      }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>{initial ? 'Edit Process' : 'New Process'}</h2>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <label>
+            <div style={label}>Name</div>
+            <input name="name" value={form.name} onChange={(e) => handleNameChange(e.target.value)} style={input} />
+          </label>
 
-    function handleDescriptionChange(val: string) {
-      setForm((prev) => ({ ...prev, description: val }));
-    }
+          <label>
+            <div style={label}>Description</div>
+            <input name="description" value={form.description} onChange={(e) => handleDescriptionChange(e.target.value)} style={input} />
+          </label>
 
-    function toggleActive() {
-      setForm((prev) => ({ ...prev, isActive: !prev.isActive }));
-    }
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={label}>Package</div>
+            <SearchableSelect
+              options={packageNames.map((n) => ({ label: n, value: n }))}
+              value={packageName}
+              placeholder="Select package"
+              onChange={(val) => selectPackage(val || undefined)}
+            />
+          </div>
 
-    function selectPackage(name?: string) {
-      setPackageName(name || undefined);
-      setPackageVersion(undefined);
-      setEntrypointName(undefined);
-    }
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={label}>Version</div>
+            <SearchableSelect
+              options={versionsForSelected.map((v) => ({ label: v, value: v }))}
+              value={packageVersion}
+              placeholder={packageName ? 'Select version' : 'Select package first'}
+              disabled={!packageName}
+              onChange={(val) => selectVersion(val || undefined)}
+            />
+          </div>
 
-    function selectVersion(version?: string) {
-      setPackageVersion(version || undefined);
-      setEntrypointName(undefined);
-    }
-
-    function selectEntrypoint(ep?: string) {
-      setEntrypointName(ep || undefined);
-      setForm((prev) => ({ ...prev, entrypointName: ep || "" }));
-    }
-
-    async function submit() {
-      if (!form.name.trim()) { alert('Name is required'); return; }
-      if (selectedPackage?.isBvpackage) {
-        if (!packageName || !packageVersion || !selectedPackage?.id) { alert('Package and version are required'); return; }
-        if (!entrypointName) { alert('Entrypoint is required'); return; }
-      } else {
-        if (!form.scriptPath.trim()) { alert('Script Path is required'); return; }
-      }
-      try {
-        setSaving(true);
-        await onSave({
-          ...form,
-          packageId: selectedPackage?.id,
-          entrypointName: selectedPackage?.isBvpackage ? entrypointName || '' : '',
-          isBv: !!selectedPackage?.isBvpackage,
-        });
-      } finally {
-        setSaving(false);
-      }
-    }
-
-    return (
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
-        <div style={{
-          width: '100%',
-          maxWidth: 680,
-          background: '#fff',
-          borderRadius: 16,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-          padding: 24,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 16,
-        }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>{initial ? 'Edit Process' : 'New Process'}</h2>
-          <div style={{ display: 'grid', gap: 12 }}>
-            <label>
-              <div style={label}>Name</div>
-              <input name="name" value={form.name} onChange={(e) => handleNameChange(e.target.value)} style={input} />
-            </label>
-
-            <label>
-              <div style={label}>Description</div>
-              <input name="description" value={form.description} onChange={(e) => handleDescriptionChange(e.target.value)} style={input} />
-            </label>
-
+          {selectedPackage?.isBvpackage ? (
             <div style={{ display: 'grid', gap: 8 }}>
-              <div style={label}>Package</div>
+              <div style={label}>Entrypoint</div>
               <SearchableSelect
-                options={packageNames.map((n) => ({ label: n, value: n }))}
-                value={packageName}
-                placeholder="Select package"
-                onChange={(val) => selectPackage(val || undefined)}
+                options={entrypoints.map((ep) => ({ label: ep.name + (ep.name === selectedPackage?.defaultEntrypoint ? ' (default)' : ''), value: ep.name }))}
+                value={entrypointName}
+                placeholder="Select entrypoint"
+                disabled={!packageVersion}
+                onChange={(val) => selectEntrypoint(val || undefined)}
               />
             </div>
-
-            <div style={{ display: 'grid', gap: 8 }}>
-              <div style={label}>Version</div>
-              <SearchableSelect
-                options={versionsForSelected.map((v) => ({ label: v, value: v }))}
-                value={packageVersion}
-                placeholder={packageName ? 'Select version' : 'Select package first'}
-                disabled={!packageName}
-                onChange={(val) => selectVersion(val || undefined)}
-              />
-            </div>
-
-            {selectedPackage?.isBvpackage ? (
-              <div style={{ display: 'grid', gap: 8 }}>
-                <div style={label}>Entrypoint</div>
-                <SearchableSelect
-                  options={entrypoints.map((ep) => ({ label: ep.name + (ep.name === selectedPackage?.defaultEntrypoint ? ' (default)' : ''), value: ep.name }))}
-                  value={entrypointName}
-                  placeholder="Select entrypoint"
-                  disabled={!packageVersion}
-                  onChange={(val) => selectEntrypoint(val || undefined)}
-                />
-              </div>
-            ) : (
-              <label>
-                <div style={label}>Script Path</div>
-                <input name="scriptPath" value={form.scriptPath} onChange={(e) => handleScriptPathChange(e.target.value)} style={input} />
-              </label>
-            )}
-
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input type="checkbox" checked={form.isActive} onChange={toggleActive} />
-              <span>Active</span>
+          ) : (
+            <label>
+              <div style={label}>Script Path</div>
+              <input name="scriptPath" value={form.scriptPath} onChange={(e) => handleScriptPathChange(e.target.value)} style={input} />
             </label>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-            <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
-            <button onClick={submit} disabled={saving} style={primaryBtn}>{saving ? 'Saving…' : 'Save'}</button>
-          </div>
+          )}
+
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" checked={form.isActive} onChange={toggleActive} />
+            <span>Active</span>
+          </label>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+          <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
+          <button onClick={submit} disabled={saving} style={primaryBtn}>{saving ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
-    );
+    </div>
+  );
+}
+
+type SelectOption = { label: string; value: string };
+
+function SearchableSelect({ options, value, onChange, placeholder, disabled }: { options: SelectOption[]; value?: string; onChange: (v?: string) => void; placeholder?: string; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState('');
+
+  const filtered = useMemo(() => {
+    const f = filter.toLowerCase();
+    return options.filter((o) => o.label.toLowerCase().includes(f));
+  }, [options, filter]);
+
+  const selectedLabel = options.find((o) => o.value === value)?.label;
+
+  function select(val: string) {
+    onChange(val);
+    setOpen(false);
+    setFilter('');
   }
 
-  type SelectOption = { label: string; value: string };
-
-  function SearchableSelect({ options, value, onChange, placeholder, disabled }: { options: SelectOption[]; value?: string; onChange: (v?: string) => void; placeholder?: string; disabled?: boolean }) {
-    const [open, setOpen] = useState(false);
-    const [filter, setFilter] = useState('');
-
-    const filtered = useMemo(() => {
-      const f = filter.toLowerCase();
-      return options.filter((o) => o.label.toLowerCase().includes(f));
-    }, [options, filter]);
-
-    const selectedLabel = options.find((o) => o.value === value)?.label;
-
-    function select(val: string) {
-      onChange(val);
-      setOpen(false);
-      setFilter('');
-    }
-
-    return (
-      <div style={{ position: 'relative' }}>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => !disabled && setOpen((o) => !o)}
-          style={{
-            ...input,
-            textAlign: 'left',
-            cursor: disabled ? 'not-allowed' : 'pointer',
-            color: selectedLabel ? '#111827' : '#6b7280',
-          }}
-        >
-          {selectedLabel || placeholder || 'Select'}
-        </button>
-        {open && !disabled && (
-          <div style={{ position: 'absolute', zIndex: 20, marginTop: 6, width: '100%', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,0.08)', maxHeight: 260, overflow: 'hidden' }}>
-            <div style={{ padding: 8 }}>
-              <input
-                autoFocus
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder="Search…"
-                style={{ ...input, width: '100%' }}
-              />
-            </div>
-            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-              {filtered.length === 0 && <div style={{ padding: 10, color: '#6b7280', fontSize: 13 }}>No matches</div>}
-              {filtered.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => select(o.value)}
-                  style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: o.value === value ? '#eff6ff' : '#fff', border: 'none', borderTop: '1px solid #f3f4f6', cursor: 'pointer' }}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        style={{
+          ...input,
+          textAlign: 'left',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          color: selectedLabel ? '#111827' : '#6b7280',
+        }}
+      >
+        {selectedLabel || placeholder || 'Select'}
+      </button>
+      {open && !disabled && (
+        <div style={{ position: 'absolute', zIndex: 20, marginTop: 6, width: '100%', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,0.08)', maxHeight: 260, overflow: 'hidden' }}>
+          <div style={{ padding: 8 }}>
+            <input
+              autoFocus
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Search…"
+              style={{ ...input, width: '100%' }}
+            />
           </div>
-        )}
-      </div>
-    );
-  }
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {filtered.length === 0 && <div style={{ padding: 10, color: '#6b7280', fontSize: 13 }}>No matches</div>}
+            {filtered.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => select(o.value)}
+                style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: o.value === value ? '#eff6ff' : '#fff', border: 'none', borderTop: '1px solid #f3f4f6', cursor: 'pointer' }}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 type FormValues = {
   name: string;
   packageId?: number;

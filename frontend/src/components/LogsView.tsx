@@ -51,7 +51,7 @@ export default function LogsView({ scope, jobExecutionId, jobId, initialProcessI
       void loadJob(jobId)
     }
   }, [scope, jobId])
-  useEffect(() => { setOffset(0); void load() }, [scope, jobExecutionId, level, range, from, to, processId, machineId, hostIdentity, limit, order, search])
+  useEffect(() => { setOffset(0); void load() }, [scope, jobExecutionId, level, range, from, to, processId, machineId, hostIdentity, limit, order, search, job])
   useEffect(() => {
     // update range derived values
     if (range === '24h') {
@@ -122,8 +122,8 @@ export default function LogsView({ scope, jobExecutionId, jobId, initialProcessI
           processId: job?.processId,
           processName: job?.process?.name || undefined,
           machineId: job?.robot?.machineId,
-          machineName: r.host_name || undefined,
-          hostIdentity: r.host_identity || undefined,
+          machineName: r.hostName || undefined,
+          hostIdentity: r.hostIdentity || undefined,
         }))
         setLogs(mapped)
         setTotal(mapped.length)
@@ -176,8 +176,8 @@ export default function LogsView({ scope, jobExecutionId, jobId, initialProcessI
             processId: job?.processId,
             processName: job?.process?.name || undefined,
             machineId: job?.robot?.machineId,
-            machineName: r.host_name || undefined,
-            hostIdentity: r.host_identity || undefined,
+            machineName: r.hostName || undefined,
+            hostIdentity: r.hostIdentity || undefined,
           }))
           exportCsv(mapped, `job_${jobExecutionId}_logs_${now}.csv`)
         })
@@ -186,7 +186,7 @@ export default function LogsView({ scope, jobExecutionId, jobId, initialProcessI
   }
 
   function exportCsv(rows: LogEntry[], filename: string) {
-    const header = ['timestamp','level','process','machine','hostIdentity','message']
+    const header = ['timestamp', 'level', 'process', 'machine', 'hostIdentity', 'message']
     const lines = [header.join(',')]
     for (const r of rows) {
       const cols = [
@@ -250,78 +250,78 @@ export default function LogsView({ scope, jobExecutionId, jobId, initialProcessI
         </div>
 
         <div className="surface-card" style={{ display: showFilters ? 'grid' : 'none', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, padding: 12 }}>
-        <label style={label}>Search<input value={search} onChange={handleSearchChange} style={input} placeholder="Message contains" /></label>
-        <label style={label}>Time range<select value={range} onChange={e => { setRange(e.target.value as any); setOffset(0) }} style={input}>
-          {ranges.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-        </select></label>
-        {range === 'custom' && (
-          <>
-            <label style={label}>From<input type="datetime-local" value={from ? from.slice(0,16) : ''} onChange={e => { setFrom(e.target.value ? new Date(e.target.value).toISOString() : undefined); setOffset(0) }} style={input} /></label>
-            <label style={label}>To<input type="datetime-local" value={to ? to.slice(0,16) : ''} onChange={e => { setTo(e.target.value ? new Date(e.target.value).toISOString() : undefined); setOffset(0) }} style={input} /></label>
-          </>
-        )}
-        <label style={label}>Level<select value={level} onChange={e => { setLevel(e.target.value as any); setOffset(0) }} style={input}>{levels.map(l => <option key={l} value={l}>{l}</option>)}</select></label>
-        <label style={label}>Process
-          {scope === 'job' ? (
-            <input value={job?.process?.name || `Process ${job?.processId ?? ''}`} readOnly style={{ ...input, backgroundColor: '#f9fafb' }} />
-          ) : (
-            <select value={processId ?? ''} onChange={e => { setProcessId(e.target.value ? Number(e.target.value) : undefined); setOffset(0) }} style={input}>
-              <option value="">All</option>
-              {processes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+          <label style={label}>Search<input value={search} onChange={handleSearchChange} style={input} placeholder="Message contains" /></label>
+          <label style={label}>Time range<select value={range} onChange={e => { setRange(e.target.value as any); setOffset(0) }} style={input}>
+            {ranges.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select></label>
+          {range === 'custom' && (
+            <>
+              <label style={label}>From<input type="datetime-local" value={from ? from.slice(0, 16) : ''} onChange={e => { setFrom(e.target.value ? new Date(e.target.value).toISOString() : undefined); setOffset(0) }} style={input} /></label>
+              <label style={label}>To<input type="datetime-local" value={to ? to.slice(0, 16) : ''} onChange={e => { setTo(e.target.value ? new Date(e.target.value).toISOString() : undefined); setOffset(0) }} style={input} /></label>
+            </>
           )}
-        </label>
-        <label style={label}>Machine<select value={machineId ?? ''} onChange={e => { setMachineId(e.target.value ? Number(e.target.value) : undefined); setOffset(0) }} style={input}>
-          <option value="">All</option>
-          {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select></label>
-        <label style={label}>Host Identity<select value={hostIdentity ?? ''} onChange={e => { setHostIdentity(e.target.value || undefined); setOffset(0) }} style={input}>
-          <option value="">All</option>
-          {hostOptions.map(h => <option key={h} value={h}>{h}</option>)}
-        </select></label>
+          <label style={label}>Level<select value={level} onChange={e => { setLevel(e.target.value as any); setOffset(0) }} style={input}>{levels.map(l => <option key={l} value={l}>{l}</option>)}</select></label>
+          <label style={label}>Process
+            {scope === 'job' ? (
+              <input value={job?.process?.name || `Process ${job?.processId ?? ''}`} readOnly style={{ ...input, backgroundColor: '#f9fafb' }} />
+            ) : (
+              <select value={processId ?? ''} onChange={e => { setProcessId(e.target.value ? Number(e.target.value) : undefined); setOffset(0) }} style={input}>
+                <option value="">All</option>
+                {processes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            )}
+          </label>
+          <label style={label}>Machine<select value={machineId ?? ''} onChange={e => { setMachineId(e.target.value ? Number(e.target.value) : undefined); setOffset(0) }} style={input}>
+            <option value="">All</option>
+            {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select></label>
+          <label style={label}>Host Identity<select value={hostIdentity ?? ''} onChange={e => { setHostIdentity(e.target.value || undefined); setOffset(0) }} style={input}>
+            <option value="">All</option>
+            {hostOptions.map(h => <option key={h} value={h}>{h}</option>)}
+          </select></label>
         </div>
 
         <div className="surface-card" style={{ padding: 12 }}>
-        {loading ? <p>Loading…</p> : error ? <p style={{ color: '#dc2626' }}>{error}</p> : logs.length === 0 ? (
-          <p style={{ color: '#6b7280', padding: 12 }}>No logs found. Try adjusting filters.</p>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ cursor: 'pointer' }} onClick={() => { setOrder(order === 'desc' ? 'asc' : 'desc'); setOffset(0) }}>Time {order === 'desc' ? '↓' : '↑'}</th>
-                <th>Level</th>
-                <th>Process</th>
-                <th>Hostname</th>
-                <th>Host Identity</th>
-                <th>Message</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleLogs.map((l, idx) => (
-                <tr key={`${l.timestamp}-${idx}`}>
-                  <td style={{ whiteSpace: 'nowrap' }}>{new Date(l.timestamp).toLocaleString()}</td>
-                  <td><LevelPill level={l.level} /></td>
-                  <td>{l.processName || l.processId || '—'}</td>
-                  <td>{l.machineName || l.machineId || '—'}</td>
-                  <td>{l.hostIdentity || '—'}</td>
-                  <td style={{ maxWidth: 480, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.message}>{l.message}</td>
+          {loading ? <p>Loading…</p> : error ? <p style={{ color: '#dc2626' }}>{error}</p> : logs.length === 0 ? (
+            <p style={{ color: '#6b7280', padding: 12 }}>No logs found. Try adjusting filters.</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ cursor: 'pointer' }} onClick={() => { setOrder(order === 'desc' ? 'asc' : 'desc'); setOffset(0) }}>Time {order === 'desc' ? '↓' : '↑'}</th>
+                  <th>Level</th>
+                  <th>Process</th>
+                  <th>Hostname</th>
+                  <th>Host Identity</th>
+                  <th>Message</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-          <div style={{ color: '#6b7280', fontSize: 12 }}>Showing {visibleLogs.length} of {total}</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button onClick={() => goPage(-1)} disabled={pageIndex === 0} style={secondaryBtn}>Prev</button>
-            <span style={{ fontSize: 12, color: '#111827' }}>Page {pageIndex + 1} / {pageCount}</span>
-            <button onClick={() => goPage(1)} disabled={pageIndex >= pageCount - 1} style={secondaryBtn}>Next</button>
-            <select value={limit} onChange={e => { setLimit(Number(e.target.value)); setOffset(0) }} style={{ ...input, width: 90 }}>
-              {[25,50,100,200].map(n => <option key={n} value={n}>{n} / page</option>)}
-            </select>
-            <button onClick={() => void load()} style={secondaryBtn}>Refresh</button>
+              </thead>
+              <tbody>
+                {visibleLogs.map((l, idx) => (
+                  <tr key={`${l.timestamp}-${idx}`}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{new Date(l.timestamp).toLocaleString()}</td>
+                    <td><LevelPill level={l.level} /></td>
+                    <td>{l.processName || l.processId || '—'}</td>
+                    <td>{l.machineName || l.machineId || '—'}</td>
+                    <td>{l.hostIdentity || '—'}</td>
+                    <td style={{ maxWidth: 480, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.message}>{l.message}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+            <div style={{ color: '#6b7280', fontSize: 12 }}>Showing {visibleLogs.length} of {total}</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button onClick={() => goPage(-1)} disabled={pageIndex === 0} style={secondaryBtn}>Prev</button>
+              <span style={{ fontSize: 12, color: '#111827' }}>Page {pageIndex + 1} / {pageCount}</span>
+              <button onClick={() => goPage(1)} disabled={pageIndex >= pageCount - 1} style={secondaryBtn}>Next</button>
+              <select value={limit} onChange={e => { setLimit(Number(e.target.value)); setOffset(0) }} style={{ ...input, width: 90 }}>
+                {[25, 50, 100, 200].map(n => <option key={n} value={n}>{n} / page</option>)}
+              </select>
+              <button onClick={() => void load()} style={secondaryBtn}>Refresh</button>
+            </div>
           </div>
-        </div>
         </div>
       </div>
     </div>

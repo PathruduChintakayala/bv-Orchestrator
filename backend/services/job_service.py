@@ -44,10 +44,17 @@ class JobService:
             entrypoint_snapshot = ep
 
         rid = payload.get("robot_id")
+        machine_name = None
         if rid is not None:
             r = self.session.exec(select(Robot).where(Robot.id == rid)).first()
             if not r:
                 raise ValueError("Robot not found")
+            # If robot has a machine, set machine_name for better UX (will be updated when job starts)
+            if r.machine_id:
+                from backend.models import Machine
+                m = self.session.exec(select(Machine).where(Machine.id == r.machine_id)).first()
+                if m:
+                    machine_name = m.name
 
         params = payload.get("parameters")
         params_json = None
@@ -87,6 +94,7 @@ class JobService:
             trigger_id=trigger_id,
             queue_item_ids=queue_item_ids,
             robot_id=rid,
+            machine_name=machine_name,  # Set if robot has a machine (will be updated when job starts)
             status="pending",
             parameters=params_json,
             created_at=now_iso(),
@@ -112,6 +120,14 @@ class JobService:
             j.status = str(payload["status"]).strip()
             if j.status == "running" and not j.started_at:
                 j.started_at = now_iso()
+                # Set machine_name when job starts running (if not already set)
+                if not j.machine_name and j.robot_id:
+                    from backend.models import Machine
+                    r = self.session.exec(select(Robot).where(Robot.id == j.robot_id)).first()
+                    if r and r.machine_id:
+                        m = self.session.exec(select(Machine).where(Machine.id == r.machine_id)).first()
+                        if m:
+                            j.machine_name = m.name
             if j.status in ("completed", "failed", "canceled"):
                 j.finished_at = now_iso()
                 if j.status in ("completed", "failed"):
@@ -240,6 +256,11 @@ class JobService:
                     "created_at": r.created_at,
                     "updated_at": r.updated_at,
                 }
+        # Use stored machine_name from job, fallback to robot's machine if not set (backward compatibility)
+        machine_name = getattr(j, "machine_name", None)
+        if not machine_name and robot_out and robot_out.get("machine_name"):
+            machine_name = robot_out.get("machine_name")
+        
         return {
             "id": j.id,
             "execution_id": getattr(j, "execution_id", None),
@@ -252,6 +273,7 @@ class JobService:
             "trigger_id": getattr(j, "trigger_id", None),
             "queue_item_ids": parse_json(getattr(j, "queue_item_ids", None)) or [],
             "robot_id": j.robot_id,
+            "hostname": machine_name,  # Display as hostname (stored as machine_name in DB)
             "status": j.status,
             "parameters": parse_json(j.parameters),
             "result": parse_json(j.result),

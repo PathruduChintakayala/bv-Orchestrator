@@ -8,10 +8,11 @@ import yaml
 
 
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
-COMMAND_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$")
+COMMAND_RE = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*|.*\.py)$")
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
-REQUIRED_FILES = {"bvproject.yaml", "entry-points.json", "pyproject.toml"}
+# Minimal package requirements (aligned with new SDK): bvproject.yaml + main.py + requirements.lock + manifest.json
+REQUIRED_FILES = {"bvproject.yaml", "main.py", "requirements.lock", "manifest.json"}
 FORBIDDEN_PREFIXES = (".venv/", "__pycache__/", "dist/", ".git/")
 
 
@@ -45,9 +46,15 @@ def _load_bvproject_yaml(text: str) -> Tuple[str, str, List[BvEntrypoint], str]:
     except Exception as e:
         raise BvPackageValidationError(f"bvproject.yaml is not valid YAML: {e}")
 
-    name = data.get("name")
-    version = data.get("version")
-    entrypoints = data.get("entrypoints")
+    # New minimal format: bvproject.yaml with top-level "project" mapping
+    project = data.get("project") if isinstance(data, dict) else None
+    if project is None or not isinstance(project, dict):
+        raise BvPackageValidationError("bvproject.yaml must contain 'project' mapping")
+
+    name = project.get("name")
+    version = project.get("version")
+    entrypoints = project.get("entrypoints")
+    entrypoint = project.get("entrypoint")
 
     if not isinstance(name, str) or not name.strip():
         raise BvPackageValidationError("bvproject.yaml: 'name' is required and must be a non-empty string")
@@ -60,45 +67,53 @@ def _load_bvproject_yaml(text: str) -> Tuple[str, str, List[BvEntrypoint], str]:
     if not SEMVER_RE.match(version):
         raise BvPackageValidationError("bvproject.yaml: 'version' must be SemVer 'X.Y.Z'")
 
-    if not isinstance(entrypoints, list) or len(entrypoints) == 0:
-        raise BvPackageValidationError("bvproject.yaml: 'entrypoints' must be a non-empty list")
+    # Support both new format (entrypoints) and legacy format (entrypoint)
+    if entrypoints:
+        # New format: entrypoints is a list
+        if not isinstance(entrypoints, list) or len(entrypoints) == 0:
+            raise BvPackageValidationError("bvproject.yaml: 'entrypoints' must be a non-empty list")
+        
+        defaults = [e for e in entrypoints if isinstance(e, dict) and e.get("default")]
+        if len(defaults) != 1:
+            raise BvPackageValidationError("bvproject.yaml: 'entrypoints' must have exactly one entrypoint marked as default")
+        
+        parsed = []
+        default_name = None
+        for ep in entrypoints:
+            if not isinstance(ep, dict):
+                raise BvPackageValidationError("bvproject.yaml: each entrypoint in 'entrypoints' must be a mapping")
+            ep_name = str(ep.get("name", "")).strip()
+            ep_command = str(ep.get("command", "")).strip()
+            ep_default = bool(ep.get("default", False))
+            
+            if not ep_name:
+                raise BvPackageValidationError("bvproject.yaml: each entrypoint must have a 'name'")
+            if not ep_command:
+                raise BvPackageValidationError(f"bvproject.yaml: entrypoint '{ep_name}' must have a 'command'")
+            if not COMMAND_RE.match(ep_command):
+                raise BvPackageValidationError(f"bvproject.yaml: entrypoint '{ep_name}' command must be 'module:function' or end with .py")
+            
+            parsed.append(BvEntrypoint(name=ep_name, command=ep_command, default=ep_default))
+            if ep_default:
+                default_name = ep_name
+        
+        if not default_name:
+            raise BvPackageValidationError("bvproject.yaml: no default entrypoint found in 'entrypoints'")
+        
+        return name, version, parsed, default_name
+    elif entrypoint:
+        # Legacy format: entrypoint is a string
+        if not isinstance(entrypoint, str) or not entrypoint.strip():
+            raise BvPackageValidationError("bvproject.yaml: 'entrypoint' is required and must be a non-empty string")
+        entrypoint = entrypoint.strip()
+        if not COMMAND_RE.match(entrypoint):
+            raise BvPackageValidationError("bvproject.yaml: 'entrypoint' must be 'module:function' or end with .py")
 
-    parsed: List[BvEntrypoint] = []
-    seen_names = set()
-    default_names: List[str] = []
-    for i, ep in enumerate(entrypoints):
-        if not isinstance(ep, dict):
-            raise BvPackageValidationError(f"bvproject.yaml: entrypoints[{i}] must be an object")
-        ep_name = ep.get("name")
-        command = ep.get("command")
-        default = bool(ep.get("default", False))
-
-        if not isinstance(ep_name, str) or not ep_name.strip():
-            raise BvPackageValidationError(f"bvproject.yaml: entrypoints[{i}].name must be a non-empty string")
-        ep_name = ep_name.strip()
-        if ep_name in seen_names:
-            raise BvPackageValidationError(f"bvproject.yaml: duplicate entrypoint name '{ep_name}'")
-        seen_names.add(ep_name)
-
-        if not isinstance(command, str) or not command.strip():
-            raise BvPackageValidationError(f"bvproject.yaml: entrypoints[{i}].command must be a non-empty string")
-        command = command.strip()
-        if not COMMAND_RE.match(command):
-            raise BvPackageValidationError(
-                f"bvproject.yaml: entrypoints[{i}].command must be 'module:function' (got '{command}')"
-            )
-
-        if default:
-            default_names.append(ep_name)
-
-        parsed.append(BvEntrypoint(name=ep_name, command=command, default=default))
-
-    if len(default_names) != 1:
-        raise BvPackageValidationError(
-            f"bvproject.yaml: exactly one entrypoint must have default=true (found {len(default_names)})"
-        )
-
-    return name, version, parsed, default_names[0]
+        # Minimal model: single default entrypoint derived from entrypoint string
+        parsed = [BvEntrypoint(name="main", command=entrypoint, default=True)]
+        return name, version, parsed, "main"
+    else:
+        raise BvPackageValidationError("bvproject.yaml: either 'entrypoint' or 'entrypoints' is required")
 
 
 def _validate_entry_points_json(text: str) -> None:
@@ -148,12 +163,6 @@ def validate_and_extract_bvpackage(zip_path: str) -> BvPackageInfo:
         except Exception as e:
             raise BvPackageValidationError(f"Failed to read bvproject.yaml as UTF-8 text: {e}")
         pkg_name, version, eps, default_name = _load_bvproject_yaml(bvproject_raw)
-
-        try:
-            ep_json_raw = zf.read("entry-points.json").decode("utf-8")
-        except Exception as e:
-            raise BvPackageValidationError(f"Failed to read entry-points.json as UTF-8 text: {e}")
-        _validate_entry_points_json(ep_json_raw)
 
         return BvPackageInfo(
             package_name=pkg_name,

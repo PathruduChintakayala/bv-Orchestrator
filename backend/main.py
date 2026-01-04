@@ -74,8 +74,13 @@ async def sdk_token_guard(request, call_next):
                 path = request.url.path
                 allowed = (
                     (method == "GET" and (path == "/api/assets" or path.startswith("/api/assets/")))
+                    or (method == "PUT" and (path.startswith("/api/assets/name/") or path.startswith("/api/assets/secret/") or path.startswith("/api/assets/credential/")))
                     or (method == "GET" and (path == "/api/queues" or path.startswith("/api/queues/")))
+                    or (method == "GET" and path == "/api/queue-items/next")
+                    or (method == "POST" and path == "/api/queue-items/add")
+                    or (method == "PUT" and path.startswith("/api/queue-items/") and path.endswith("/status"))
                     or (method == "POST" and path == "/api/queue-items")
+                    or (method == "POST" and path.startswith("/api/job-executions/") and path.endswith("/logs"))
                     or (method == "POST" and path == "/api/packages/preflight")
                     or (method == "POST" and path == "/api/packages/upload")
                 )

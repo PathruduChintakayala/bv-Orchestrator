@@ -162,14 +162,14 @@ export default function PackagesPage() {
             <h1 className="page-title" style={{ margin: 0 }}>Packages</h1>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search packages…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-            <button onClick={()=>load(search)} style={secondaryBtn}>Search</button>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search packages…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+            <button onClick={() => load(search)} style={secondaryBtn}>Search</button>
             <button onClick={openUpload} style={primaryBtn}>Upload Package</button>
           </div>
         </div>
 
         <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
-          {loading ? <p>Loading…</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
+          {loading ? <p>Loading…</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
@@ -188,7 +188,7 @@ export default function PackagesPage() {
                     <td style={{ padding: '6px 0' }}>{row.totalVersions}</td>
                     <td style={{ padding: '6px 0' }}>{new Date(row.updatedAt).toLocaleString()}</td>
                     <td style={{ padding: '6px 0' }}>
-                      <button style={primaryBtn} onClick={()=>openVersions(row.name)}>View Versions</button>
+                      <button style={primaryBtn} onClick={() => openVersions(row.name)}>View Versions</button>
                     </td>
                   </tr>
                 ))}
@@ -265,8 +265,8 @@ function VersionsModal({
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button style={primaryBtn} onClick={()=>onBulkDelete(packageName)}>Bulk Delete Selected</button>
-          <button style={dangerBtn} onClick={()=>onDeleteInactive(packageName)}>Delete All Inactive Versions</button>
+          <button style={primaryBtn} onClick={() => onBulkDelete(packageName)}>Bulk Delete Selected</button>
+          <button style={dangerBtn} onClick={() => onDeleteInactive(packageName)}>Delete All Inactive Versions</button>
           <div style={{ color: '#6b7280', fontSize: 12 }}>
             Active versions are detected from Jobs that reference the same package name + version.
           </div>
@@ -295,7 +295,7 @@ function VersionsModal({
                         type="checkbox"
                         disabled={disabled}
                         checked={selectedIds.has(v.id) && !disabled}
-                        onChange={()=>onToggle(v.id, active)}
+                        onChange={() => onToggle(v.id, active)}
                       />
                     </td>
                     <td style={{ padding: '6px 0' }}>{v.version}</td>
@@ -328,7 +328,7 @@ function VersionsModal({
   );
 }
 
-function UploadModal({ onCancel, onSave }: { onCancel: ()=>void; onSave:(v:UploadValues)=>void }) {
+function UploadModal({ onCancel, onSave }: { onCancel: () => void; onSave: (v: UploadValues) => void }) {
   const [form, setForm] = useState<UploadValues>({ file: null });
   const [saving, setSaving] = useState(false);
 
@@ -437,7 +437,7 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={onToggle}
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
         style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
       >
         ⋮
@@ -446,6 +446,7 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
         <div
           ref={menuRef}
           role="menu"
+          className="action-menu"
           style={{
             ...menuStyle,
             background: "#fff",
@@ -454,9 +455,11 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
             borderRadius: 8,
             minWidth: 180,
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          {actions.map((a) => (
+          {actions.map((a, index) => (
             <button
               key={a.label}
               role="menuitem"
@@ -467,10 +470,23 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
                 padding: "10px 12px",
                 background: "transparent",
                 border: "none",
+                borderBottom: index < actions.length - 1 ? "1px solid #e5e7eb" : "none",
                 cursor: a.disabled ? "not-allowed" : "pointer",
                 color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+                display: "block",
               }}
-              onClick={() => { if (!a.disabled) { a.onClick(); onClose(); } }}
+              onMouseEnter={(e) => {
+                if (!a.disabled) {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!a.disabled) { a.onClick(); onClose(); }
+              }}
             >
               {a.label}
             </button>

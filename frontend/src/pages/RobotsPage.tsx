@@ -102,66 +102,66 @@ export default function RobotsPage() {
             <h1 className="page-title" style={{ margin: 0 }}>Robots</h1>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={()=>load(search)} style={secondaryBtn} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search robots…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-            <button onClick={()=>load(search)} style={secondaryBtn}>Search</button>
+            <button onClick={() => load(search)} style={secondaryBtn} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search robots…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+            <button onClick={() => load(search)} style={secondaryBtn}>Search</button>
             <button onClick={openNew} style={primaryBtn}>New Robot</button>
           </div>
         </div>
 
         <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
-        {loading ? <p>Loading…</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ fontSize: 12, color: '#6b7280' }}>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Name</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Status</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Last heartbeat</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Current job</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Machine</th>
-                <th style={{ padding: '8px 12px', textAlign: 'center' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(r => (
-                <tr key={r.id} style={{ fontSize: 14, color: '#111827' }}>
-                  <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.name}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'left' }}>
-                    <span style={{ padding: '4px 8px', borderRadius: 999, backgroundColor: r.status === 'online' ? '#dcfce7' : '#e5e7eb', color: r.status === 'online' ? '#166534' : '#374151' }}>{r.status}</span>
-                  </td>
-                  <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.lastHeartbeat ? new Date(r.lastHeartbeat).toLocaleString() : '—'}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.currentJobId ?? '—'}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'left', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.machineName ?? '—'}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                    <ActionMenu
-                      open={menuOpenId === r.id}
-                      onToggle={() => setMenuOpenId(menuOpenId === r.id ? null : r.id)}
-                      onClose={() => setMenuOpenId(null)}
-                      actions={[
-                        { label: "Edit", onClick: () => openEdit(r) },
-                        { label: "Delete", tone: "danger" as const, onClick: () => handleDelete(r.id) },
-                      ]}
-                    />
-                  </td>
+          {loading ? <p>Loading…</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ fontSize: 12, color: '#6b7280' }}>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Name</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Status</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Last heartbeat</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Current job</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Machine</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Actions</th>
                 </tr>
-              ))}
-              {items.length === 0 && (
-                <tr><td colSpan={6} style={{ padding: '8px 12px', textAlign: 'left', color: '#6b7280' }}>No robots found</td></tr>
-              )}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {items.map(r => (
+                  <tr key={r.id} style={{ fontSize: 14, color: '#111827' }}>
+                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.name}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>
+                      <span style={{ padding: '4px 8px', borderRadius: 999, backgroundColor: r.status === 'online' ? '#dcfce7' : '#e5e7eb', color: r.status === 'online' ? '#166534' : '#374151' }}>{r.status}</span>
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.lastHeartbeat ? new Date(r.lastHeartbeat).toLocaleString() : '—'}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.currentJobId ?? '—'}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.machineName ?? '—'}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                      <ActionMenu
+                        open={menuOpenId === r.id}
+                        onToggle={() => setMenuOpenId(menuOpenId === r.id ? null : r.id)}
+                        onClose={() => setMenuOpenId(null)}
+                        actions={[
+                          { label: "Edit", onClick: () => openEdit(r) },
+                          { label: "Delete", tone: "danger" as const, onClick: () => handleDelete(r.id) },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                ))}
+                {items.length === 0 && (
+                  <tr><td colSpan={6} style={{ padding: '8px 12px', textAlign: 'left', color: '#6b7280' }}>No robots found</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {modalOpen && (
-        <RobotModal initial={editing} onCancel={closeModal} onSave={handleSave} />
+          <RobotModal initial={editing} onCancel={closeModal} onSave={handleSave} />
         )}
       </div>
     </div>
   );
 }
 
-function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCancel: ()=>void; onSave:(v:FormValues)=>void }) {
+function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCancel: () => void; onSave: (v: FormValues) => void }) {
   const [form, setForm] = useState<FormValues>({
     name: initial?.name || "",
     status: initial?.status || "offline",
@@ -256,7 +256,7 @@ function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCa
           <label>
             <div style={label}>Status <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 'normal' }}>(read-only)</span></div>
             <select name="status" value={form.status} onChange={handleChange} style={input} disabled>
-              {(['offline','online'] as RobotStatus[]).map(s=> <option key={s} value={s}>{s}</option>)}
+              {(['offline', 'online'] as RobotStatus[]).map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </label>
           <label>

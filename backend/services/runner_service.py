@@ -187,6 +187,7 @@ class RunnerService:
 
         job.status = "running"
         job.started_at = now_iso()
+        job.machine_name = machine.name  # Snapshot machine name when job starts
         if job.robot_id is None:
             job.robot_id = current_robot.id
         current_robot.current_job_id = job.id
