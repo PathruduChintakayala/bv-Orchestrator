@@ -116,67 +116,67 @@ export default function MachinesPage() {
         </div>
 
         <div style={{ backgroundColor: "#fff", borderRadius: 12, boxShadow: "0 10px 24px rgba(15,23,42,0.08)", padding: 16 }}>
-        {loading ? (
-          <p>Loading…</p>
-        ) : error ? (
-          <p style={{ color: "#b91c1c" }}>{error}</p>
-        ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ fontSize: 12, color: "#6b7280" }}>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Machine Name</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Mode</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Status</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Robots</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Last Seen</th>
-                <th style={{ padding: '8px 12px', textAlign: 'center' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItems.map((m) => (
-                <MachineRow
-                  key={m.id}
-                  machine={m}
-                  onOpen={() => openDetails(m)}
-                  onDelete={() => handleDelete(m)}
-                  menuOpen={menuOpenId === m.id}
-                  onToggleMenu={() => setMenuOpenId(menuOpenId === m.id ? null : m.id)}
-                  onCloseMenu={() => setMenuOpenId(null)}
-                />
-              ))}
-              {filteredItems.length === 0 && (
-                <tr>
-                  <td colSpan={6} style={{ padding: '8px 12px', textAlign: 'left', color: "#6b7280" }}>
-                    No machines found
-                  </td>
+          {loading ? (
+            <p>Loading…</p>
+          ) : error ? (
+            <p style={{ color: "#b91c1c" }}>{error}</p>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ fontSize: 12, color: "#6b7280" }}>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Machine Name</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Mode</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Status</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Robots</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Last Seen</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Actions</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {filteredItems.map((m) => (
+                  <MachineRow
+                    key={m.id}
+                    machine={m}
+                    onOpen={() => openDetails(m)}
+                    onDelete={() => handleDelete(m)}
+                    menuOpen={menuOpenId === m.id}
+                    onToggleMenu={() => setMenuOpenId(menuOpenId === m.id ? null : m.id)}
+                    onCloseMenu={() => setMenuOpenId(null)}
+                  />
+                ))}
+                {filteredItems.length === 0 && (
+                  <tr>
+                    <td colSpan={6} style={{ padding: '8px 12px', textAlign: 'left', color: "#6b7280" }}>
+                      No machines found
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {addOpen && (
-        <AddMachineModal
-          onCancel={closeAdd}
-          onCreated={async (created) => {
-            // Do not persist machineKey in list state; reload from server list.
-            await load();
-            return created;
-          }}
-          onCreate={handleCreate}
-        />
+          <AddMachineModal
+            onCancel={closeAdd}
+            onCreated={async (created) => {
+              // Do not persist machineKey in list state; reload from server list.
+              await load();
+              return created;
+            }}
+            onCreate={handleCreate}
+          />
         )}
 
         {detailsOpen && selected && (
-        <MachineDetailsModal
-          machine={selected}
-          onClose={closeDetails}
-          onDeleted={async () => {
-            closeDetails();
-            await load();
-          }}
-        />
+          <MachineDetailsModal
+            machine={selected}
+            onClose={closeDetails}
+            onDeleted={async () => {
+              closeDetails();
+              await load();
+            }}
+          />
         )}
       </div>
     </div>

@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { Job, JobStatus } from "../types/job";
 import { fetchJobs, createJob, cancelJob } from "../api/jobs";
 import { fetchProcesses } from "../api/processes";
-import { fetchRobots } from "../api/robots";import { getProcessTypeLabel, getProcessTypeTone } from "../utils/processTypes";import React from "react";
+import { fetchRobots } from "../api/robots";
+import { getProcessTypeLabel, getProcessTypeTone } from "../utils/processTypes";
+import React from "react";
 
 export default function JobsPage() {
   const [items, setItems] = useState<Job[]>([]);
@@ -23,6 +26,18 @@ export default function JobsPage() {
   type FetchState<T> = { status: 'idle' | 'loading' | 'ready' | 'error'; data: T; error?: string };
   const [processesState, setProcessesState] = useState<FetchState<import('../types/processes').Process[]>>({ status: 'idle', data: [] });
   const [robotsState, setRobotsState] = useState<FetchState<import('../types/robot').Robot[]>>({ status: 'idle', data: [] });
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.action-menu')) {
+        setMenuOpenId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const pid = hydrateFromHash();
@@ -40,10 +55,10 @@ export default function JobsPage() {
     // Open modal if hash includes trigger flag
     try {
       const hash = window.location.hash || '#/jobs'
-      const url = new URL(hash.replace('#',''), 'http://localhost')
+      const url = new URL(hash.replace('#', ''), 'http://localhost')
       const trig = url.searchParams.get('trigger')
       if (trig) setModalOpen(true)
-    } catch {}
+    } catch { }
   }, []);
 
   async function load(nextProcessId: number | undefined = processId) {
@@ -62,7 +77,7 @@ export default function JobsPage() {
   function hydrateFromHash(): number | undefined {
     try {
       const hash = window.location.hash || '#/automations/jobs';
-      const url = new URL(hash.replace('#',''), 'http://localhost');
+      const url = new URL(hash.replace('#', ''), 'http://localhost');
       const pid = url.searchParams.get('processId');
       const src = url.searchParams.get('source');
       if (src) setSource(src);
@@ -71,7 +86,7 @@ export default function JobsPage() {
         setProcessId(num);
         return num;
       }
-    } catch {/* ignore parse errors */}
+    } catch {/* ignore parse errors */ }
     return undefined;
   }
 
@@ -131,7 +146,7 @@ export default function JobsPage() {
   }
 
   function hostname(j: Job) {
-    return j.robot?.machineName || j.robot?.machineInfo || j.robot?.name || "-";
+    return j.hostname || j.robot?.machineName || j.robot?.machineInfo || j.robot?.name || "-";
   }
 
   function stateBadge(j: Job) {
@@ -160,7 +175,7 @@ export default function JobsPage() {
 
   function applyFiltersAndSort(raw: Job[]) {
     const now = Date.now();
-    const windowMs = timeRange === "24h" ? 24*60*60*1000 : timeRange === "7d" ? 7*24*60*60*1000 : undefined;
+    const windowMs = timeRange === "24h" ? 24 * 60 * 60 * 1000 : timeRange === "7d" ? 7 * 24 * 60 * 60 * 1000 : undefined;
     const filtered = raw.filter(j => {
       if (runtimeType && runtimeLabel(j) !== runtimeType) return false;
       if (source && sourceLabel(j) !== source) return false;
@@ -176,7 +191,7 @@ export default function JobsPage() {
       return true;
     });
 
-    const sorted = [...filtered].sort((a,b) => {
+    const sorted = [...filtered].sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
       const va = sortValue(a, sortBy);
       const vb = sortValue(b, sortBy);
@@ -209,7 +224,7 @@ export default function JobsPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <input
               value={search}
-              onChange={(e)=>{ setSearch(e.target.value); setPage(0); }}
+              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
               placeholder="Search by process, host, or job ID"
               className="search-input"
               style={{ minWidth: 240 }}
@@ -223,34 +238,34 @@ export default function JobsPage() {
 
         <div className="surface-card" style={{ display: showFilters ? 'grid' : 'none', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, alignItems: 'center' }}>
           <label style={label}>State
-            <select value={status} onChange={e=>{ setStatus(e.target.value as JobStatus | ""); setPage(0); }} style={input}>
+            <select value={status} onChange={e => { setStatus(e.target.value as JobStatus | ""); setPage(0); }} style={input}>
               <option value="">All</option>
-              {(['pending','running','completed','failed','canceled'] as JobStatus[]).map(s=> <option key={s} value={s}>{s}</option>)}
+              {(['pending', 'running', 'completed', 'failed', 'canceled'] as JobStatus[]).map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </label>
           <label style={label}>Runtime type
-            <select value={runtimeType} onChange={e=>{ setRuntimeType(e.target.value); setPage(0); }} style={input}>
+            <select value={runtimeType} onChange={e => { setRuntimeType(e.target.value); setPage(0); }} style={input}>
               <option value="">All</option>
               <option value="RPA">RPA</option>
               <option value="Agent">Agent</option>
             </select>
           </label>
           <label style={label}>Source
-            <select value={source} onChange={e=>{ setSource(e.target.value); setPage(0); }} style={input}>
+            <select value={source} onChange={e => { setSource(e.target.value); setPage(0); }} style={input}>
               <option value="">All</option>
               <option value="Manual">Manual</option>
               <option value="Trigger">Trigger</option>
             </select>
           </label>
           <label style={label}>Time range
-            <select value={timeRange} onChange={e=>{ setTimeRange(e.target.value); setPage(0); }} style={input}>
+            <select value={timeRange} onChange={e => { setTimeRange(e.target.value); setPage(0); }} style={input}>
               <option value="24h">Last 24h</option>
               <option value="7d">Last 7d</option>
               <option value="all">All time</option>
             </select>
           </label>
           <label style={label}>Process filter
-            <select value={processId ?? ''} onChange={e=>{ const v = e.target.value ? Number(e.target.value) : undefined; setProcessId(v); setPage(0); load(v); }} style={input}>
+            <select value={processId ?? ''} onChange={e => { const v = e.target.value ? Number(e.target.value) : undefined; setProcessId(v); setPage(0); load(v); }} style={input}>
               <option value="">All processes</option>
               {processesState.data.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
@@ -263,11 +278,11 @@ export default function JobsPage() {
             <table className="processes-table" aria-busy={loading}>
               <thead>
                 <tr>
-                  <th onClick={()=>toggleSort('process')} role="button">Process</th>
+                  <th onClick={() => toggleSort('process')} role="button">Process</th>
                   <th>Type</th>
-                  <th onClick={()=>toggleSort('status')} role="button">State</th>
-                  <th onClick={()=>toggleSort('started')} role="button">Started</th>
-                  <th onClick={()=>toggleSort('ended')} role="button">Ended</th>
+                  <th onClick={() => toggleSort('status')} role="button">State</th>
+                  <th onClick={() => toggleSort('started')} role="button">Started</th>
+                  <th onClick={() => toggleSort('ended')} role="button">Ended</th>
                   <th>Duration</th>
                   <th>Runtime</th>
                   <th>Source</th>
@@ -292,11 +307,16 @@ export default function JobsPage() {
                     <td>{hostname(j)}</td>
                     <td className="actions-col">
                       <ActionMenu
-                        job={j}
-                        onStop={() => handleCancel(j.id)}
-                        onViewJobLogs={() => { if (j.executionId) window.location.hash = `#/automations/logs?jobId=${j.id}&executionId=${j.executionId}&processId=${j.processId}`; }}
-                        onViewProcessLogs={() => { window.location.hash = `#/automations/logs?processId=${j.processId}`; }}
-                        onRestart={() => { void handleTrigger({ processId: j.processId, robotId: j.robotId ?? undefined, parameters: null }); }}
+                        open={menuOpenId === j.id}
+                        onToggle={() => setMenuOpenId(menuOpenId === j.id ? null : j.id)}
+                        onClose={() => setMenuOpenId(null)}
+                        actions={[
+                          ...(j.status === 'running' || j.status === 'pending' ? [{ label: "Stop", onClick: () => handleCancel(j.id) }] : []),
+                          { label: "Restart", onClick: () => { void handleTrigger({ processId: j.processId, robotId: j.robotId ?? undefined, parameters: null }); } },
+                          { label: "View logs for this job", onClick: () => { if (j.executionId) window.location.hash = `#/automations/logs?jobId=${j.id}&executionId=${j.executionId}&processId=${j.processId}`; }, disabled: !j.executionId },
+                          { label: "View logs for this process", onClick: () => { window.location.hash = `#/automations/logs?processId=${j.processId}`; } },
+                          { label: "Kill", tone: "danger" as const, onClick: () => { alert('Kill not implemented'); } },
+                        ]}
                       />
                     </td>
                   </tr>
@@ -318,11 +338,11 @@ export default function JobsPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
             <div style={{ color: '#6b7280', fontSize: 12 }}>Showing {visible.length} of {filtered.length}</div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button onClick={()=>setPage(Math.max(0, currentPage-1))} disabled={currentPage===0} className="btn btn-ghost">Prev</button>
-              <span style={{ fontSize: 12, color: '#111827' }}>Page {currentPage+1} / {pageCount}</span>
-              <button onClick={()=>setPage(Math.min(pageCount-1, currentPage+1))} disabled={currentPage>=pageCount-1} className="btn btn-ghost">Next</button>
-              <select value={pageSize} onChange={e=>{ setPageSize(Number(e.target.value)); setPage(0); }} style={{ ...input, width: 120 }}>
-                {[10,25,50,100].map(n => <option key={n} value={n}>{n} / page</option>)}
+              <button onClick={() => setPage(Math.max(0, currentPage - 1))} disabled={currentPage === 0} className="btn btn-ghost">Prev</button>
+              <span style={{ fontSize: 12, color: '#111827' }}>Page {currentPage + 1} / {pageCount}</span>
+              <button onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))} disabled={currentPage >= pageCount - 1} className="btn btn-ghost">Next</button>
+              <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }} style={{ ...input, width: 120 }}>
+                {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n} / page</option>)}
               </select>
             </div>
           </div>
@@ -361,31 +381,119 @@ function Badge({ tone = "slate", children }: { tone?: "slate" | "blue"; children
   return <span className={`badge badge-${tone}`}>{children}</span>;
 }
 
-function ActionMenu({ job, onStop, onViewJobLogs, onViewProcessLogs, onRestart }: { job: Job; onStop: ()=>void; onViewJobLogs: ()=>void; onViewProcessLogs: ()=>void; onRestart: ()=>void }) {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false); }
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, []);
+function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onToggle: () => void; onClose: () => void; actions: MenuAction[] }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  const isRunning = job.status === 'running' || job.status === 'pending';
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node) && buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open, onClose]);
+
+  const menuStyle = useMemo(() => {
+    if (!open || !buttonRef.current) return {};
+    const rect = buttonRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const menuHeight = actions.length * 40 + 16;
+    const menuWidth = 180;
+
+    let top = rect.bottom + 8;
+    let left = rect.right - menuWidth;
+
+    if (top + menuHeight > viewportHeight && rect.top - menuHeight - 8 > 0) {
+      top = rect.top - menuHeight - 8;
+    }
+    if (left < 0) left = rect.left;
+    if (left + menuWidth > viewportWidth) left = viewportWidth - menuWidth - 8;
+
+    return { position: 'fixed' as const, top, left, zIndex: 1000 };
+  }, [open, actions.length]);
 
   return (
-    <div className="action-menu">
-      <button className="btn btn-ghost icon-button" aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(o=>!o)}>⋮</button>
-      {open && (
-        <div className="menu-panel" role="menu">
-          {isRunning && <button className="menu-item" role="menuitem" onClick={()=>{ onStop(); setOpen(false); }}>Stop</button>}
-          <button className="menu-item" role="menuitem" onClick={()=>{ onRestart(); setOpen(false); }}>Restart</button>
-          <button className="menu-item" role="menuitem" onClick={()=>{ onViewJobLogs(); setOpen(false); }} disabled={!job.executionId}>View logs for this job</button>
-          <button className="menu-item" role="menuitem" onClick={()=>{ onViewProcessLogs(); setOpen(false); }}>View logs for this process</button>
-          <button className="menu-item danger" role="menuitem" onClick={()=>{ alert('Kill not implemented'); setOpen(false); }}>Kill</button>
-        </div>
+    <div className="action-menu" style={{ position: "relative", display: "inline-block" }}>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
+        className="btn btn-ghost icon-button"
+      >
+        ⋮
+      </button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          className="action-menu"
+          role="menu"
+          style={{
+            ...menuStyle,
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
+            borderRadius: 8,
+            minWidth: 180,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {actions.map((a, index) => (
+            <button
+              key={a.label}
+              role="menuitem"
+              disabled={a.disabled}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                background: "transparent",
+                border: "none",
+                borderBottom: index < actions.length - 1 ? "1px solid #e5e7eb" : "none",
+                cursor: a.disabled ? "not-allowed" : "pointer",
+                color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+                display: "block",
+              }}
+              onMouseEnter={(e) => {
+                if (!a.disabled) {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!a.disabled) { a.onClick(); onClose(); }
+              }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>,
+        document.body
       )}
     </div>
   );
 }
+
+type MenuAction = { label: string; onClick: () => void; tone?: "danger"; disabled?: boolean };
 
 function TriggerModal({ processesState, robotsState, onCancel, onSave }: { processesState: { status: 'idle' | 'loading' | 'ready' | 'error'; data: import('../types/processes').Process[]; error?: string }; robotsState: { status: 'idle' | 'loading' | 'ready' | 'error'; data: import('../types/robot').Robot[]; error?: string }; onCancel: () => void; onSave: (v: FormValues) => void }) {
   const processes = processesState.data;
@@ -409,7 +517,7 @@ function TriggerModal({ processesState, robotsState, onCancel, onSave }: { proce
     setForm(prev => ({ ...prev, robotId: value ? Number(value) : undefined }))
   }
 
-  
+
 
   async function submit() {
     if (!form.processId) {

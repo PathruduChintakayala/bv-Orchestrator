@@ -35,6 +35,93 @@ class AssetService:
             return None
         return self.asset_to_out(a)
 
+    def get_asset_by_name(self, name: str) -> Optional[Asset]:
+        a = self.repo.get_by_name(name)
+        if not a or self._is_provisioning_asset(a):
+            return None
+        return a
+
+    def get_credential_value(self, a: Asset) -> dict:
+        typ = self._normalize_asset_type(a.type)
+        if typ != "credential":
+            raise ValueError("Asset is not a credential")
+        try:
+            obj = json.loads(a.value or "{}")
+            return {
+                "username": obj.get("username", ""),
+                "password": obj.get("password", "")  # This is the raw encrypted password
+            }
+        except Exception:
+            return {"username": "", "password": ""}
+
+    def update_asset_by_name(self, name: str, payload: Dict[str, Any], user: Any, request: Any, is_raw: bool = False) -> Dict[str, Any]:
+        a = self.repo.get_by_name(name)
+        if not a or self._is_provisioning_asset(a):
+            raise ValueError("Asset not found")
+        
+        before_out = self.asset_to_out(a)
+        cur_type = self._normalize_asset_type(a.type)
+
+        if cur_type in {"text", "int", "bool"}:
+            if "value" in payload and payload["value"] is not None:
+                a.value = str(payload["value"]).strip()
+        elif cur_type == "secret":
+            if "value" in payload and payload["value"]:
+                val = str(payload["value"]).strip()
+                # If is_raw is True, we assume it's already encrypted
+                a.value = val if is_raw else encrypt_value(val)
+        elif cur_type == "credential":
+            current = {}
+            try:
+                current = json.loads(a.value or "{}")
+            except Exception:
+                current = {}
+            username = payload.get("username")
+            password = payload.get("password")
+            if username is not None:
+                current["username"] = str(username).strip()
+            if password:
+                pwd = str(password).strip()
+                # If is_raw is True, we assume it's already encrypted
+                current["password"] = pwd if is_raw else encrypt_value(pwd)
+            a.value = json.dumps({
+                "username": current.get("username", ""),
+                "password": current.get("password", "")
+            })
+
+        if "description" in payload:
+            a.description = payload.get("description") or None
+        
+        a.updated_at = now_iso()
+        self.repo.update(a)
+        after_out = self.asset_to_out(a)
+        
+        try:
+            changes = diff_dicts(before_out, after_out)
+            # handle cases where user might be a Robot model or None
+            actor_name = None
+            if hasattr(user, "username"):
+                actor_name = user.username
+            elif hasattr(user, "name"): # Robot has 'name'
+                actor_name = f"robot:{user.name}"
+            
+            log_event(
+                self.session, 
+                action="asset.update", 
+                entity_type="asset", 
+                entity_id=a.id, 
+                entity_name=a.name, 
+                before=before_out, 
+                after=after_out, 
+                metadata={"changed_keys": list(changes.keys()), "diff": changes, "runtime_update": is_raw}, 
+                request=request, 
+                user=user if hasattr(user, "id") and not hasattr(user, "api_token") else None,
+                actor_username=actor_name
+            )
+        except Exception:
+            pass
+        return after_out
+
     def create_asset(self, payload: Dict[str, Any], user: Any, request: Any) -> Dict[str, Any]:
         name = (payload.get("name") or "").strip()
         if not name:

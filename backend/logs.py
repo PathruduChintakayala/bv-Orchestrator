@@ -103,6 +103,7 @@ def list_logs(
                 "processName": row.process_name,
                 "machineId": row.machine_id,
                 "machineName": row.machine_name,
+                "hostName": row.host_name,
                 "hostIdentity": row.host_identity,
             }
         )

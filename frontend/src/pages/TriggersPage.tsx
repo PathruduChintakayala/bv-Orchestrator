@@ -162,64 +162,64 @@ export default function TriggersPage() {
         </div>
 
         <div className="surface-card" style={{ padding: 16 }}>
-        {selected.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
-            <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
-            <button onClick={handleBulkDelete} style={dangerBtn}>Delete</button>
-          </div>
-        )}
-        {loading ? <p>Loading...</p> : error ? <p style={{ color: "#b91c1c" }}>{error}</p> : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ width: 40 }}>
-                  <input type="checkbox" checked={selected.length === filtered.length && filtered.length > 0} onChange={toggleSelectAll} />
-                </th>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Process</th>
-                <th>Last fired</th>
-                <th>Next fire</th>
-                <th>Enabled</th>
-                <th data-type="actions">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(t => (
-                <tr key={t.id}>
-                  <td>
-                    <input type="checkbox" checked={selected.includes(t.id)} onChange={() => toggleSelect(t.id)} />
-                  </td>
-                  <td>{t.name}</td>
-                  <td>{t.type}</td>
-                  <td>{processNameById.get(t.processId) || `Process ${t.processId}`}</td>
-                  <td>{t.lastFiredAt ? new Date(t.lastFiredAt).toLocaleString() : "—"}</td>
-                  <td>{t.nextFireAt ? new Date(t.nextFireAt).toLocaleString() : "—"}</td>
-                  <td>{t.enabled ? "Yes" : "No"}</td>
-                  <td data-type="actions">
-                    <button onClick={() => void handleRunNow(t)} className="btn btn-ghost icon-button" title="Run trigger" aria-label="Run trigger">
-                      ▶
-                    </button>
-                    <ActionMenu
-                      open={menuOpenId === t.id}
-                      onToggle={() => setMenuOpenId(menuOpenId === t.id ? null : t.id)}
-                      onClose={() => setMenuOpenId(null)}
-                      actions={[
-                        { label: "Edit", onClick: () => handleEdit(t) },
-                        { label: t.enabled ? "Disable" : "Enable", onClick: () => void toggleTrigger(t, !t.enabled) },
-                        { label: "View Jobs", onClick: () => handleViewJobs(t) },
-                        { label: "Remove", tone: "danger", onClick: () => void handleDelete(t) },
-                      ]}
-                    />
-                  </td>
+          {selected.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
+              <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
+              <button onClick={handleBulkDelete} style={dangerBtn}>Delete</button>
+            </div>
+          )}
+          {loading ? <p>Loading...</p> : error ? <p style={{ color: "#b91c1c" }}>{error}</p> : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 40 }}>
+                    <input type="checkbox" checked={selected.length === filtered.length && filtered.length > 0} onChange={toggleSelectAll} />
+                  </th>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Process</th>
+                  <th>Last fired</th>
+                  <th>Next fire</th>
+                  <th>Enabled</th>
+                  <th data-type="actions">Actions</th>
                 </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={8} style={{ paddingTop: 12, color: "#6b7280" }}>No triggers found</td></tr>
-              )}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {filtered.map(t => (
+                  <tr key={t.id}>
+                    <td>
+                      <input type="checkbox" checked={selected.includes(t.id)} onChange={() => toggleSelect(t.id)} />
+                    </td>
+                    <td>{t.name}</td>
+                    <td>{t.type}</td>
+                    <td>{processNameById.get(t.processId) || `Process ${t.processId}`}</td>
+                    <td>{t.lastFiredAt ? new Date(t.lastFiredAt).toLocaleString() : "—"}</td>
+                    <td>{t.nextFireAt ? new Date(t.nextFireAt).toLocaleString() : "—"}</td>
+                    <td>{t.enabled ? "Yes" : "No"}</td>
+                    <td data-type="actions">
+                      <button onClick={() => void handleRunNow(t)} className="btn btn-ghost icon-button" title="Run trigger" aria-label="Run trigger">
+                        ▶
+                      </button>
+                      <ActionMenu
+                        open={menuOpenId === t.id}
+                        onToggle={() => setMenuOpenId(menuOpenId === t.id ? null : t.id)}
+                        onClose={() => setMenuOpenId(null)}
+                        actions={[
+                          { label: "Edit", onClick: () => handleEdit(t) },
+                          { label: t.enabled ? "Disable" : "Enable", onClick: () => void toggleTrigger(t, !t.enabled) },
+                          { label: "View Jobs", onClick: () => handleViewJobs(t) },
+                          { label: "Remove", tone: "danger", onClick: () => void handleDelete(t) },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={8} style={{ paddingTop: 12, color: "#6b7280" }}>No triggers found</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
 
         <TriggerModal
@@ -290,13 +290,13 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
   }, [open, actions.length]);
 
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
+    <div className="action-menu" style={{ position: "relative", display: "inline-block" }}>
       <button
         ref={buttonRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={onToggle}
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
         style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
       >
         ⋮
@@ -305,6 +305,7 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
         <div
           ref={menuRef}
           role="menu"
+          className="action-menu"
           style={{
             ...menuStyle,
             background: "#fff",
@@ -313,9 +314,11 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
             borderRadius: 8,
             minWidth: 180,
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          {actions.map((a) => (
+          {actions.map((a, index) => (
             <button
               key={a.label}
               role="menuitem"
@@ -326,10 +329,23 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
                 padding: "10px 12px",
                 background: "transparent",
                 border: "none",
+                borderBottom: index < actions.length - 1 ? "1px solid #e5e7eb" : "none",
                 cursor: a.disabled ? "not-allowed" : "pointer",
                 color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+                display: "block",
               }}
-              onClick={() => { if (!a.disabled) { a.onClick(); onClose(); } }}
+              onMouseEnter={(e) => {
+                if (!a.disabled) {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!a.disabled) { a.onClick(); onClose(); }
+              }}
             >
               {a.label}
             </button>

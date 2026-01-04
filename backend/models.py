@@ -99,6 +99,7 @@ class Job(SQLModel, table=True):
     trigger_id: Optional[str] = Field(default=None, index=True)
     queue_item_ids: Optional[str] = None  # JSON array of queue item IDs claimed by this job
     robot_id: Optional[int] = None
+    machine_name: Optional[str] = None  # Snapshot of machine name when job started running
     status: str = Field(default="pending")  # "pending" | "running" | "completed" | "failed" | "canceled"
     parameters: Optional[str] = None
     result: Optional[str] = None

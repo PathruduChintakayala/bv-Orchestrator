@@ -12,6 +12,7 @@ export interface Job {
   packageVersion?: string | null;
   entrypointName?: string | null;
   robotId?: number | null;
+  hostname?: string | null;  // Machine name (persists even if robot is removed)
   status: JobStatus;
   parameters?: Record<string, unknown> | null;
   result?: Record<string, unknown> | null;

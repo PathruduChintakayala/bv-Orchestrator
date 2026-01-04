@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import type React from 'react'
 import type { Queue } from '../types/queue'
 import { fetchQueues, fetchQueueStats, createQueue, updateQueue, deleteQueue } from '../api/queues'
@@ -18,6 +19,18 @@ export default function QueuesPage() {
   const [properties, setProperties] = useState('')
   const [completedItems, setCompletedItems] = useState(false)
   const [uncompletedItems, setUncompletedItems] = useState(false)
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as HTMLElement
+      if (!target.closest('.action-menu')) {
+        setMenuOpenId(null)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   useEffect(() => { load() }, [])
 
@@ -121,11 +134,11 @@ export default function QueuesPage() {
             <h1 className="page-title">Queues</h1>
           </div>
           <div className="page-actions">
-            <form className="search-form" onSubmit={(e)=>{ e.preventDefault(); load(); }} role="search">
+            <form className="search-form" onSubmit={(e) => { e.preventDefault(); load(); }} role="search">
               <span className="search-icon" aria-hidden>🔍</span>
               <input
                 value={search}
-                onChange={(e)=>setSearch(e.target.value)}
+                onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search queues"
                 className="search-input"
                 aria-label="Search queues"
@@ -141,23 +154,23 @@ export default function QueuesPage() {
 
         <div className="surface-card" style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <input type="checkbox" checked={hasTrigger} onChange={e=>setHasTrigger(e.target.checked)} />
+            <input type="checkbox" checked={hasTrigger} onChange={e => setHasTrigger(e.target.checked)} />
             Has Trigger
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span>Labels:</span>
-            <input value={labels} onChange={e=>setLabels(e.target.value)} placeholder='Filter labels...' style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #e5e7eb', width: 120 }} />
+            <input value={labels} onChange={e => setLabels(e.target.value)} placeholder='Filter labels...' style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #e5e7eb', width: 120 }} />
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span>Properties:</span>
-            <input value={properties} onChange={e=>setProperties(e.target.value)} placeholder='Filter properties...' style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #e5e7eb', width: 120 }} />
+            <input value={properties} onChange={e => setProperties(e.target.value)} placeholder='Filter properties...' style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #e5e7eb', width: 120 }} />
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <input type="checkbox" checked={completedItems} onChange={e=>setCompletedItems(e.target.checked)} />
+            <input type="checkbox" checked={completedItems} onChange={e => setCompletedItems(e.target.checked)} />
             Completed queue items
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <input type="checkbox" checked={uncompletedItems} onChange={e=>setUncompletedItems(e.target.checked)} />
+            <input type="checkbox" checked={uncompletedItems} onChange={e => setUncompletedItems(e.target.checked)} />
             Uncompleted queue items
           </label>
         </div>
@@ -169,7 +182,7 @@ export default function QueuesPage() {
               <button onClick={handleBulkDelete} style={dangerBtn}>Delete</button>
             </div>
           )}
-          {loading ? <p>Loading...</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
+          {loading ? <p>Loading...</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
@@ -208,20 +221,17 @@ export default function QueuesPage() {
                       <td data-align="right">{metrics.bizExceptions ?? 0}</td>
                       <td title={q.description || ''}>{(q.description || '').slice(0, 20)}{(q.description || '').length > 20 ? '...' : ''}</td>
                       <td data-type="actions">
-                        <select style={{ border: '1px solid #e5e7eb', backgroundColor: '#f3f4f6', cursor: 'pointer', padding: '4px 8px', borderRadius: 4, fontSize: 12, color: '#111827' }} onChange={e => {
-                          const action = e.target.value
-                          if (action === 'view-items') window.location.hash = `#/queue-items?queueId=${q.id}`
-                          else if (action === 'view-details') setSelectedQueue(q)
-                          else if (action === 'edit') openEdit(q)
-                          else if (action === 'delete') handleDelete(q.id)
-                          e.target.value = ''
-                        }}>
-                          <option value=''>Actions</option>
-                          <option value='view-items'>View Queue Items</option>
-                          <option value='view-details'>View Details</option>
-                          <option value='edit'>Edit Queue</option>
-                          <option value='delete'>Delete Queue</option>
-                        </select>
+                        <ActionMenu
+                          open={menuOpenId === q.id}
+                          onToggle={() => setMenuOpenId(menuOpenId === q.id ? null : q.id)}
+                          onClose={() => setMenuOpenId(null)}
+                          actions={[
+                            { label: "View Queue Items", onClick: () => window.location.hash = `#/queue-items?queueId=${q.id}` },
+                            { label: "View Details", onClick: () => setSelectedQueue(q) },
+                            { label: "Edit Queue", onClick: () => openEdit(q) },
+                            { label: "Delete Queue", tone: "danger" as const, onClick: () => handleDelete(q.id) },
+                          ]}
+                        />
                       </td>
                     </tr>
                   )
@@ -273,7 +283,7 @@ function DetailsModal({ queue, onClose }: { queue: Queue; onClose: () => void })
   )
 }
 
-function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCancel: ()=>void; onSave:(v:FormValues)=>void }) {
+function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCancel: () => void; onSave: (v: FormValues) => void }) {
   const [form, setForm] = useState<FormValues>({ name: initial?.name || '', description: initial?.description || '', maxRetries: initial?.maxRetries ?? 0, enforceUniqueReference: initial?.enforceUniqueReference ?? false })
   const [saving, setSaving] = useState(false)
 
@@ -302,7 +312,7 @@ function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCa
           )}
           <label>
             <div style={label}>Description</div>
-            <textarea name='description' value={form.description || ''} onChange={handleChange} style={{...input, minHeight: 80}} />
+            <textarea name='description' value={form.description || ''} onChange={handleChange} style={{ ...input, minHeight: 80 }} />
           </label>
           <label>
             <div style={label}>Max retries</div>
@@ -334,3 +344,116 @@ const label: React.CSSProperties = { fontSize: 12, color: '#6b7280', marginBotto
 const primaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#2563eb', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }
 const secondaryBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#e5e7eb', color: '#111827', border: 'none', fontWeight: 600, cursor: 'pointer' }
 const dangerBtn: React.CSSProperties = { padding: '10px 14px', borderRadius: 8, backgroundColor: '#dc2626', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }
+
+type MenuAction = { label: string; onClick: () => void; tone?: "danger"; disabled?: boolean };
+function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onToggle: () => void; onClose: () => void; actions: MenuAction[] }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node) && buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open, onClose]);
+
+  const menuStyle = useMemo(() => {
+    if (!open || !buttonRef.current) return {};
+    const rect = buttonRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const menuHeight = actions.length * 40 + 16;
+    const menuWidth = 180;
+
+    let top = rect.bottom + 8;
+    let left = rect.right - menuWidth;
+
+    if (top + menuHeight > viewportHeight && rect.top - menuHeight - 8 > 0) {
+      top = rect.top - menuHeight - 8;
+    }
+    if (left < 0) left = rect.left;
+    if (left + menuWidth > viewportWidth) left = viewportWidth - menuWidth - 8;
+
+    return { position: 'fixed' as const, top, left, zIndex: 1000 };
+  }, [open, actions.length]);
+
+  return (
+    <div className="action-menu" style={{ position: "relative", display: "inline-block" }}>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
+        style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
+      >
+        ⋮
+      </button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          className="action-menu"
+          role="menu"
+          style={{
+            ...menuStyle,
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
+            borderRadius: 8,
+            minWidth: 180,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {actions.map((a, index) => (
+            <button
+              key={a.label}
+              role="menuitem"
+              disabled={a.disabled}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                background: "transparent",
+                border: "none",
+                borderBottom: index < actions.length - 1 ? "1px solid #e5e7eb" : "none",
+                cursor: a.disabled ? "not-allowed" : "pointer",
+                color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+                display: "block",
+              }}
+              onMouseEnter={(e) => {
+                if (!a.disabled) {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!a.disabled) { a.onClick(); onClose(); }
+              }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}

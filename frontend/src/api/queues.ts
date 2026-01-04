@@ -1,4 +1,5 @@
 import type { Queue } from '../types/queue'
+import { toCamel } from './utils'
 
 function authHeaders() {
   const token = localStorage.getItem('token') || ''
@@ -58,7 +59,7 @@ export async function fetchQueueStats(queueId: number): Promise<{
 }> {
   const res = await fetch(`/api/queues/${queueId}/stats`, { headers: authHeaders() })
   if (!res.ok) throw new Error(await res.text())
-  return await res.json()
+  return toCamel(await res.json())
 }
 
 export async function deleteQueue(id: number): Promise<void> {

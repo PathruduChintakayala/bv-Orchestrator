@@ -16,11 +16,11 @@ export default function QueueItemsPage() {
 
   useEffect(() => {
     const hash = window.location.hash || '#/queue-items'
-    const url = new URL(hash.replace('#',''), 'http://localhost')
+    const url = new URL(hash.replace('#', ''), 'http://localhost')
     const qid = url.searchParams.get('queueId')
     const newQueueId = qid ? Number(qid) : null
     setQueueId(newQueueId)
-    
+
     if (!newQueueId) {
       setError('Queue ID is required. Please navigate from the Queues page.')
       setLoading(false)
@@ -41,9 +41,9 @@ export default function QueueItemsPage() {
     })
   }, [])
 
-  useEffect(() => { 
+  useEffect(() => {
     if (queueId) {
-      load() 
+      load()
     }
   }, [queueId, status])
 
@@ -127,12 +127,12 @@ export default function QueueItemsPage() {
       <div className="page-shell" style={{ gap: 12 }}>
         <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <h1 className="page-title" style={{ margin: 0 }}>{currentQueue ? `${currentQueue.name} – Items` : 'Queue Items'}</h1>
+            <h1 className="page-title" style={{ margin: 0 }}>{currentQueue ? `Queue Items: ${currentQueue.name}` : 'Queue Items'}</h1>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <select value={status} onChange={e=>setStatus(e.target.value as QueueItemStatus | '')} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+            <select value={status} onChange={e => setStatus(e.target.value as QueueItemStatus | '')} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }}>
               <option value=''>All statuses</option>
-              {(['new','in_progress','completed','failed','deleted'] as QueueItemStatus[]).map(s=> <option key={s} value={s}>{s}</option>)}
+              {(['new', 'in_progress', 'completed', 'failed', 'deleted'] as QueueItemStatus[]).map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             <button onClick={load} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
             <button onClick={openNew} style={primaryBtn}>New Item</button>
@@ -140,52 +140,52 @@ export default function QueueItemsPage() {
         </div>
 
         <div className="surface-card">
-        {selected.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
-            <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
-            <button onClick={handleBulkDelete} style={dangerBtn}>Delete</button>
-          </div>
-        )}
-        {loading ? <p>Loading...</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ width: 40 }}>
-                  <input type="checkbox" checked={selected.length === items.filter(it => it.status !== 'deleted').length && items.filter(it => it.status !== 'deleted').length > 0} onChange={toggleSelectAll} ref={(el) => {
-                    if (el) el.indeterminate = selected.length > 0 && selected.length < items.filter(it => it.status !== 'deleted').length
-                  }} />
-                </th>
-                <th>Reference</th>
-                <th>Status</th>
-                <th data-align="right">Priority</th>
-                <th data-align="right">Retries</th>
-                <th>Created</th>
-                <th data-type="actions">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(it => (
-                <tr key={it.id}>
-                  <td>
-                    <input type="checkbox" checked={selected.includes(it.id)} onChange={() => toggleSelect(it.id)} disabled={it.status === 'deleted'} />
-                  </td>
-                  <td>{it.reference ?? '-'}</td>
-                  <td><StatusBadge status={it.status} /></td>
-                  <td data-align="right">{it.priority}</td>
-                  <td data-align="right">{it.retries}</td>
-                  <td>{new Date(it.createdAt).toLocaleString()}</td>
-                  <td data-type="actions">
-                    <button style={secondaryBtn} onClick={()=>setSelectedItem(it)}>View Details</button>
-                  </td>
+          {selected.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
+              <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
+              <button onClick={handleBulkDelete} style={dangerBtn}>Delete</button>
+            </div>
+          )}
+          {loading ? <p>Loading...</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 40 }}>
+                    <input type="checkbox" checked={selected.length === items.filter(it => it.status !== 'deleted').length && items.filter(it => it.status !== 'deleted').length > 0} onChange={toggleSelectAll} ref={(el) => {
+                      if (el) el.indeterminate = selected.length > 0 && selected.length < items.filter(it => it.status !== 'deleted').length
+                    }} />
+                  </th>
+                  <th>Reference</th>
+                  <th>Status</th>
+                  <th data-align="right">Priority</th>
+                  <th data-align="right">Retries</th>
+                  <th>Created</th>
+                  <th data-type="actions">Actions</th>
                 </tr>
-              ))}
-              {items.length === 0 && (
-                <tr><td colSpan={7} style={{ paddingTop: 12, color: '#6b7280' }}>No items found</td></tr>
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {items.map(it => (
+                  <tr key={it.id}>
+                    <td>
+                      <input type="checkbox" checked={selected.includes(it.id)} onChange={() => toggleSelect(it.id)} disabled={it.status === 'deleted'} />
+                    </td>
+                    <td>{it.reference ?? '-'}</td>
+                    <td><StatusBadge status={it.status} /></td>
+                    <td data-align="right">{it.priority}</td>
+                    <td data-align="right">{it.retries}</td>
+                    <td>{new Date(it.createdAt).toLocaleString()}</td>
+                    <td data-type="actions">
+                      <button style={secondaryBtn} onClick={() => setSelectedItem(it)}>View Details</button>
+                    </td>
+                  </tr>
+                ))}
+                {items.length === 0 && (
+                  <tr><td colSpan={7} style={{ paddingTop: 12, color: '#6b7280' }}>No items found</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
 
       </div>
 
@@ -223,7 +223,7 @@ function StatusBadge({ status }: { status: QueueItemStatus }) {
   )
 }
 
-function NewItemModal({ onCancel, onSave }: { onCancel: ()=>void; onSave:(v:FormValues)=>Promise<void> }) {
+function NewItemModal({ onCancel, onSave }: { onCancel: () => void; onSave: (v: FormValues) => Promise<void> }) {
   const [form, setForm] = useState<FormValues>({ reference: '', priority: 0, payloadText: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -263,7 +263,7 @@ function NewItemModal({ onCancel, onSave }: { onCancel: ()=>void; onSave:(v:Form
           </label>
           <label>
             <div style={label}>Payload (JSON)</div>
-            <textarea name='payloadText' value={form.payloadText || ''} onChange={handleChange} style={{...input, minHeight: 120}} placeholder='e.g. {"invoiceId":123}' />
+            <textarea name='payloadText' value={form.payloadText || ''} onChange={handleChange} style={{ ...input, minHeight: 120 }} placeholder='e.g. {"invoiceId":123}' />
           </label>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>

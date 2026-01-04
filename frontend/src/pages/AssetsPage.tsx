@@ -149,74 +149,74 @@ export default function AssetsPage() {
             <h1 className="page-title" style={{ margin: 0 }}>Assets</h1>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search assets…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-            <button onClick={()=>load(search)} style={secondaryBtn}>Search</button>
-            <button onClick={openNew} style={{...primaryBtn, opacity: canCreate ? 1 : 0.6, cursor: canCreate ? 'pointer' : 'not-allowed'}} disabled={!canCreate}>New Asset</button>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search assets…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+            <button onClick={() => load(search)} style={secondaryBtn}>Search</button>
+            <button onClick={openNew} style={{ ...primaryBtn, opacity: canCreate ? 1 : 0.6, cursor: canCreate ? 'pointer' : 'not-allowed' }} disabled={!canCreate}>New Asset</button>
           </div>
         </div>
 
         <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
-        {loading ? <p>Loading…</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
-          <>
-            {selected.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
-                <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
-                <button onClick={handleBulkDelete} style={{...dangerBtn, opacity: canDelete ? 1 : 0.6, cursor: canDelete ? 'pointer' : 'not-allowed'}} disabled={!canDelete}>Delete</button>
-              </div>
-            )}
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ fontSize: 12, color: '#6b7280' }}>
-                  <th style={{ padding: '8px 12px', width: 40, textAlign: 'center' }}>
-                    <input type="checkbox" checked={selected.length === assets.length && assets.length > 0} onChange={toggleSelectAll} style={{ verticalAlign: 'middle' }} />
-                  </th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Name</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Type</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Value</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Description</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {assets.map(a => (
-                  <tr key={a.id} style={{ fontSize: 14, color: '#111827' }}>
-                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                      <input type="checkbox" checked={selected.includes(a.id)} onChange={() => toggleSelect(a.id)} style={{ verticalAlign: 'middle' }} />
-                    </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{a.name}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{formatAssetType(a.type as AssetType)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{a.type === 'secret' ? '••••••' : a.type === 'credential' ? (a.username || '') : a.value}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'left', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.description || ''}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                      {(canEdit || canDelete) && (
-                        <ActionMenu
-                          open={menuOpenId === a.id}
-                          onToggle={() => setMenuOpenId(menuOpenId === a.id ? null : a.id)}
-                          onClose={() => setMenuOpenId(null)}
-                          actions={[
-                            ...(canEdit ? [{ label: "Edit", onClick: () => openEdit(a) }] as const : []),
-                            ...(canDelete ? [{ label: "Delete", tone: "danger" as const, onClick: () => handleDelete(a.id) }] as const : []),
-                          ]}
-                        />
-                      )}
-                    </td>
+          {loading ? <p>Loading…</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (
+            <>
+              {selected.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#f3f4f6', borderRadius: 8, marginBottom: 16 }}>
+                  <span style={{ fontWeight: 600 }}>{selected.length} selected</span>
+                  <button onClick={handleBulkDelete} style={{ ...dangerBtn, opacity: canDelete ? 1 : 0.6, cursor: canDelete ? 'pointer' : 'not-allowed' }} disabled={!canDelete}>Delete</button>
+                </div>
+              )}
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ fontSize: 12, color: '#6b7280' }}>
+                    <th style={{ padding: '8px 12px', width: 40, textAlign: 'center' }}>
+                      <input type="checkbox" checked={selected.length === assets.length && assets.length > 0} onChange={toggleSelectAll} style={{ verticalAlign: 'middle' }} />
+                    </th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>Name</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>Type</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>Value</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>Description</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Actions</th>
                   </tr>
-                ))}
-                {assets.length === 0 && (
-                  <tr><td colSpan={6} style={{ padding: '8px 12px', textAlign: 'left', color: '#6b7280' }}>No assets found</td></tr>
-                )}
-              </tbody>
-            </table>
-          </>
-        )}
+                </thead>
+                <tbody>
+                  {assets.map(a => (
+                    <tr key={a.id} style={{ fontSize: 14, color: '#111827' }}>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                        <input type="checkbox" checked={selected.includes(a.id)} onChange={() => toggleSelect(a.id)} style={{ verticalAlign: 'middle' }} />
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'left' }}>{a.name}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'left' }}>{formatAssetType(a.type as AssetType)}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'left' }}>{a.type === 'secret' ? '••••••' : a.type === 'credential' ? (a.username || '') : a.value}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'left', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.description || ''}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                        {(canEdit || canDelete) && (
+                          <ActionMenu
+                            open={menuOpenId === a.id}
+                            onToggle={() => setMenuOpenId(menuOpenId === a.id ? null : a.id)}
+                            onClose={() => setMenuOpenId(null)}
+                            actions={[
+                              ...(canEdit ? [{ label: "Edit", onClick: () => openEdit(a) }] as const : []),
+                              ...(canDelete ? [{ label: "Delete", tone: "danger" as const, onClick: () => handleDelete(a.id) }] as const : []),
+                            ]}
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {assets.length === 0 && (
+                    <tr><td colSpan={6} style={{ padding: '8px 12px', textAlign: 'left', color: '#6b7280' }}>No assets found</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
 
         {modalOpen && (
-        <AssetModal
-          initial={editing || null}
-          onCancel={closeModal}
-          onSave={handleSave}
-        />
+          <AssetModal
+            initial={editing || null}
+            onCancel={closeModal}
+            onSave={handleSave}
+          />
         )}
       </div>
     </div>
@@ -277,13 +277,13 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
   }, [open, actions.length]);
 
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
+    <div className="action-menu" style={{ position: "relative", display: "inline-block" }}>
       <button
         ref={buttonRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={onToggle}
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
         style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "16px" }}
       >
         ⋮
@@ -292,6 +292,7 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
         <div
           ref={menuRef}
           role="menu"
+          className="action-menu"
           style={{
             ...menuStyle,
             background: "#fff",
@@ -300,9 +301,12 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
             borderRadius: 8,
             minWidth: 180,
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
           }}
+          onClick={(e) => e.stopPropagation()}
         >
-          {actions.map((a) => (
+          {actions.map((a, index) => (
             <button
               key={a.label}
               role="menuitem"
@@ -313,10 +317,23 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
                 padding: "10px 12px",
                 background: "transparent",
                 border: "none",
+                borderBottom: index < actions.length - 1 ? "1px solid #e5e7eb" : "none",
                 cursor: a.disabled ? "not-allowed" : "pointer",
                 color: a.tone === "danger" ? "#b91c1c" : a.disabled ? "#9ca3af" : "#111827",
+                display: "block",
               }}
-              onClick={() => { if (!a.disabled) { a.onClick(); onClose(); } }}
+              onMouseEnter={(e) => {
+                if (!a.disabled) {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!a.disabled) { a.onClick(); onClose(); }
+              }}
             >
               {a.label}
             </button>
@@ -328,7 +345,7 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
   );
 }
 
-function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCancel: ()=>void; onSave:(v:FormValues)=>void }) {
+function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCancel: () => void; onSave: (v: FormValues) => void }) {
   const [form, setForm] = useState<FormValues>({
     name: initial?.name || "",
     type: (initial?.type as AssetType) || "text",
@@ -372,17 +389,17 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
-        <div style={{
-          width: '100%',
-          maxWidth: 600,
-          background: '#fff',
-          borderRadius: 16,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-          padding: 24,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 16,
-        }}>
+      <div style={{
+        width: '100%',
+        maxWidth: 600,
+        background: '#fff',
+        borderRadius: 16,
+        boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+        padding: 24,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+      }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>{initial ? 'Edit Asset' : 'New Asset'}</h2>
         <div style={{ display: 'grid', gap: 10 }}>
           <label>
@@ -397,41 +414,41 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
               ))}
             </select>
           </label>
-            {form.type === 'bool' ? (
-              <div>
-                <div style={label}>Value</div>
-                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <input type="radio" name="boolValue" checked={form.value === 'true'} onChange={()=>setForm(prev=>({...prev, value: 'true'}))} />
-                    <span>True</span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <input type="radio" name="boolValue" checked={form.value === 'false'} onChange={()=>setForm(prev=>({...prev, value: 'false'}))} />
-                    <span>False</span>
-                  </label>
-                </div>
-              </div>
-            ) : form.type === 'credential' ? (
-              <div style={{ display: 'grid', gap: 16 }}>
-                <label className="modal-field">
-                  <div style={label}>Username</div>
-                  <input name="credUser" value={form.credUser || ''} onChange={e=>setForm(prev=>({...prev, credUser: e.target.value}))} style={input} />
+          {form.type === 'bool' ? (
+            <div>
+              <div style={label}>Value</div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input type="radio" name="boolValue" checked={form.value === 'true'} onChange={() => setForm(prev => ({ ...prev, value: 'true' }))} />
+                  <span>True</span>
                 </label>
-                <label className="modal-field">
-                  <div style={label}>Password</div>
-                  <input type="password" name="credPass" value={form.credPass || ''} onChange={e=>setForm(prev=>({...prev, credPass: e.target.value}))} style={input} placeholder={initial ? 'Leave blank to keep current' : ''} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input type="radio" name="boolValue" checked={form.value === 'false'} onChange={() => setForm(prev => ({ ...prev, value: 'false' }))} />
+                  <span>False</span>
                 </label>
               </div>
-            ) : (
+            </div>
+          ) : form.type === 'credential' ? (
+            <div style={{ display: 'grid', gap: 16 }}>
               <label className="modal-field">
-                <div style={label}>{form.type === 'secret' ? 'Secret value' : 'Value'}</div>
-                <input name="value" value={form.value} onChange={handleChange} style={input} type={form.type === 'secret' ? 'password' : 'text'} />
+                <div style={label}>Username</div>
+                <input name="credUser" value={form.credUser || ''} onChange={e => setForm(prev => ({ ...prev, credUser: e.target.value }))} style={input} />
               </label>
-            )}
+              <label className="modal-field">
+                <div style={label}>Password</div>
+                <input type="password" name="credPass" value={form.credPass || ''} onChange={e => setForm(prev => ({ ...prev, credPass: e.target.value }))} style={input} placeholder={initial ? 'Leave blank to keep current' : ''} />
+              </label>
+            </div>
+          ) : (
+            <label className="modal-field">
+              <div style={label}>{form.type === 'secret' ? 'Secret value' : 'Value'}</div>
+              <input name="value" value={form.value} onChange={handleChange} style={input} type={form.type === 'secret' ? 'password' : 'text'} />
+            </label>
+          )}
           {/* isSecret checkbox removed for all types as requested */}
           <label className="modal-field">
             <div style={label}>Description</div>
-            <textarea name="description" value={form.description || ''} onChange={handleChange} style={{...input, minHeight: 60}} />
+            <textarea name="description" value={form.description || ''} onChange={handleChange} style={{ ...input, minHeight: 60 }} />
           </label>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
