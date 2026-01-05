@@ -100,6 +100,14 @@ export default function JobsPage() {
     }
   }
 
+  function handleSearchSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const term = search.trim();
+    setSearch(term);
+    setPage(0);
+    void load(processId);
+  }
+
   function openNew() { setModalOpen(true); }
   function closeModal() { setModalOpen(false); }
 
@@ -218,24 +226,30 @@ export default function JobsPage() {
   return (
     <div style={{ padding: 16 }}>
       <div className="page-shell" style={{ gap: 12 }}>
-        <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <h1 className="page-title" style={{ margin: 0 }}>Jobs</h1>
+        <header className="page-header surface-card">
+          <div>
+            <h1 className="page-title">Jobs</h1>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <input
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-              placeholder="Search by process, host, or job ID"
-              className="search-input"
-              style={{ minWidth: 240 }}
-            />
-            <button onClick={() => load(processId)} className="btn btn-ghost" aria-label="Refresh">↻</button>
-            <button onClick={resetFilters} className="btn btn-secondary">Reset</button>
-            <button onClick={() => setShowFilters(!showFilters)} className="btn btn-ghost">{showFilters ? 'Hide Filters ▾' : 'Show Filters ▸'}</button>
-            <button onClick={openNew} className="btn btn-primary">Trigger Job</button>
+          <div className="page-actions">
+            <form className="search-form" onSubmit={handleSearchSubmit} role="search">
+              <span className="search-icon" aria-hidden>🔍</span>
+              <input
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+                placeholder="Search by process, host, or job ID"
+                className="search-input"
+                aria-label="Search jobs"
+              />
+              <button type="submit" className="btn btn-secondary">Search</button>
+            </form>
+            <div className="action-buttons">
+              <button type="button" onClick={() => load(processId)} className="btn btn-ghost" aria-label="Refresh list">↻</button>
+              <button type="button" onClick={resetFilters} className="btn btn-secondary">Reset</button>
+              <button type="button" onClick={() => setShowFilters(!showFilters)} className="btn btn-ghost">{showFilters ? 'Hide Filters ▾' : 'Show Filters ▸'}</button>
+              <button type="button" onClick={openNew} className="btn btn-primary">▶ Start Job</button>
+            </div>
           </div>
-        </div>
+        </header>
 
         <div className="surface-card" style={{ display: showFilters ? 'grid' : 'none', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, alignItems: 'center' }}>
           <label style={label}>State

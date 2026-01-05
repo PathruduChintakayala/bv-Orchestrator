@@ -203,7 +203,7 @@ export default function ProcessesPage() {
             </form>
             <div className="action-buttons">
               <button onClick={() => load(search)} className="btn btn-ghost" aria-label="Refresh list">↻</button>
-              <button onClick={openNew} className="btn btn-primary">New Process</button>
+              <button onClick={openNew} className="btn btn-primary">+ New Process</button>
             </div>
           </div>
         </header>

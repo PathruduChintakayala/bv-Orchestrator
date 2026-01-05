@@ -99,22 +99,28 @@ export default function MachinesPage() {
   return (
     <div style={{ padding: 16 }}>
       <div className="page-shell" style={{ gap: 12 }}>
-        <div className="surface-card" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <h1 className="page-title" style={{ margin: 0 }}>Machines</h1>
+        <header className="page-header surface-card">
+          <div>
+            <h1 className="page-title">Machines</h1>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search machines…"
-              style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb" }}
-            />
-            <button onClick={() => setSearch(searchInput)} style={secondaryBtn}>Search</button>
-            <button onClick={load} style={secondaryBtn}>Refresh</button>
-            <button onClick={openAdd} style={primaryBtn}>Add Machine</button>
+          <div className="page-actions">
+            <form className="search-form" onSubmit={(e) => { e.preventDefault(); setSearch(searchInput); }} role="search">
+              <span className="search-icon" aria-hidden>🔍</span>
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search machines"
+                className="search-input"
+                aria-label="Search machines"
+              />
+              <button type="submit" className="btn btn-secondary">Search</button>
+            </form>
+            <div className="action-buttons">
+              <button type="button" onClick={load} className="btn btn-ghost" aria-label="Refresh list">↻</button>
+              <button type="button" onClick={openAdd} className="btn btn-primary">+ Add Machine</button>
+            </div>
           </div>
-        </div>
+        </header>
 
         <div style={{ backgroundColor: "#fff", borderRadius: 12, boxShadow: "0 10px 24px rgba(15,23,42,0.08)", padding: 16 }}>
           {loading ? (

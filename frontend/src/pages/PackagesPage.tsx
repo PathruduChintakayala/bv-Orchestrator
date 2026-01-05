@@ -158,16 +158,32 @@ export default function PackagesPage() {
   return (
     <div style={{ padding: 16 }}>
       <div className="page-shell" style={{ gap: 12 }}>
-        <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <h1 className="page-title" style={{ margin: 0 }}>Packages</h1>
+        <header className="page-header surface-card">
+          <div>
+            <h1 className="page-title">Packages</h1>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search packages…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-            <button onClick={() => load(search)} style={secondaryBtn}>Search</button>
-            <button onClick={openUpload} style={primaryBtn}>Upload Package</button>
+          <div className="page-actions">
+            <form
+              className="search-form"
+              onSubmit={(e) => { e.preventDefault(); const term = search.trim(); setSearch(term); void load(term); }}
+              role="search"
+            >
+              <span className="search-icon" aria-hidden>🔍</span>
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search packages"
+                className="search-input"
+                aria-label="Search packages"
+              />
+              <button type="submit" className="btn btn-secondary">Search</button>
+            </form>
+            <div className="action-buttons">
+              <button type="button" onClick={() => load(search)} className="btn btn-ghost" aria-label="Refresh list">↻</button>
+              <button type="button" onClick={openUpload} className="btn btn-primary">⬆ Upload Package</button>
+            </div>
           </div>
-        </div>
+        </header>
 
         <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
           {loading ? <p>Loading…</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (

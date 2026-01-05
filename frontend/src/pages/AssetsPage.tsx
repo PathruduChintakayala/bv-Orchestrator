@@ -144,16 +144,22 @@ export default function AssetsPage() {
   return (
     <div style={{ padding: 16 }}>
       <div className="page-shell" style={{ gap: 12 }}>
-        <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <h1 className="page-title" style={{ margin: 0 }}>Assets</h1>
+        <header className="page-header surface-card">
+          <div>
+            <h1 className="page-title">Assets</h1>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search assets…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-            <button onClick={() => load(search)} style={secondaryBtn}>Search</button>
-            <button onClick={openNew} style={{ ...primaryBtn, opacity: canCreate ? 1 : 0.6, cursor: canCreate ? 'pointer' : 'not-allowed' }} disabled={!canCreate}>New Asset</button>
+          <div className="page-actions">
+            <form className="search-form" onSubmit={(e) => { e.preventDefault(); load(search); }} role="search">
+              <span className="search-icon" aria-hidden>🔍</span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search assets" className="search-input" aria-label="Search assets" />
+              <button type="submit" className="btn btn-secondary">Search</button>
+            </form>
+            <div className="action-buttons">
+              <button type="button" onClick={() => load(search)} className="btn btn-ghost" aria-label="Refresh list">↻</button>
+              <button type="button" onClick={openNew} className="btn btn-primary" style={{ opacity: canCreate ? 1 : 0.6, cursor: canCreate ? 'pointer' : 'not-allowed' }} disabled={!canCreate}>+ New Asset</button>
+            </div>
           </div>
-        </div>
+        </header>
 
         <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
           {loading ? <p>Loading…</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (

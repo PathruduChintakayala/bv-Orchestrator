@@ -98,17 +98,22 @@ export default function RobotsPage() {
   return (
     <div style={{ padding: 16 }}>
       <div className="page-shell" style={{ gap: 12 }}>
-        <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <h1 className="page-title" style={{ margin: 0 }}>Robots</h1>
+        <header className="page-header surface-card">
+          <div>
+            <h1 className="page-title">Robots</h1>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search robots…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-            <button onClick={() => load(search)} style={secondaryBtn}>Search</button>
-            <button onClick={() => load(search)} style={secondaryBtn} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
-            <button onClick={openNew} style={primaryBtn}>New Robot</button>
+          <div className="page-actions">
+            <form className="search-form" onSubmit={(e) => { e.preventDefault(); load(search); }} role="search">
+              <span className="search-icon" aria-hidden>🔍</span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search robots" className="search-input" aria-label="Search robots" />
+              <button type="submit" className="btn btn-secondary">Search</button>
+            </form>
+            <div className="action-buttons">
+              <button type="button" onClick={() => load(search)} className="btn btn-ghost" aria-label="Refresh list" disabled={loading}>↻</button>
+              <button type="button" onClick={openNew} className="btn btn-primary">+ New Robot</button>
+            </div>
           </div>
-        </div>
+        </header>
 
         <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
           {loading ? <p>Loading…</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (

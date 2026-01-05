@@ -148,19 +148,28 @@ export default function TriggersPage() {
   return (
     <div style={{ padding: 16 }}>
       <div className="page-shell" style={{ gap: 12 }}>
-        <div className="surface-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827", margin: 0 }}>Triggers</h1>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search triggers by name or process"
-              style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", width: 250 }}
-            />
-            <button onClick={() => void load()} title="Refresh" style={{ ...secondaryBtn, padding: "10px", fontSize: "16px" }}>↻</button>
-            <button onClick={() => setModalOpen(true)} style={primaryBtn}>New Trigger</button>
+        <header className="page-header surface-card">
+          <div>
+            <h1 className="page-title">Triggers</h1>
           </div>
-        </div>
+          <div className="page-actions">
+            <form className="search-form" onSubmit={(e) => { e.preventDefault(); setSearch(search.trim()); }} role="search">
+              <span className="search-icon" aria-hidden>🔍</span>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search triggers by name or process"
+                className="search-input"
+                aria-label="Search triggers"
+              />
+              <button type="submit" className="btn btn-secondary">Search</button>
+            </form>
+            <div className="action-buttons">
+              <button type="button" onClick={() => void load()} className="btn btn-ghost" aria-label="Refresh list">↻</button>
+              <button type="button" onClick={() => setModalOpen(true)} className="btn btn-primary">+ New Trigger</button>
+            </div>
+          </div>
+        </header>
 
         <div className="surface-card" style={{ padding: 16 }}>
           {selected.length > 0 && (
