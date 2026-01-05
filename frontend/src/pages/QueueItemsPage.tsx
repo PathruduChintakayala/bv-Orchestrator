@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { QueueItem, QueueItemStatus } from '../types/queueItem'
 import { fetchQueueItems, createQueueItem, updateQueueItem } from '../api/queueItems'
+import { formatDisplayTime } from '../utils/datetime'
 import { fetchQueues } from '../api/queues'
 
 export default function QueueItemsPage() {
@@ -173,7 +174,7 @@ export default function QueueItemsPage() {
                     <td><StatusBadge status={it.status} /></td>
                     <td data-align="right">{it.priority}</td>
                     <td data-align="right">{it.retries}</td>
-                    <td>{new Date(it.createdAt).toLocaleString()}</td>
+                    <td>{formatDisplayTime(it.createdAt)}</td>
                     <td data-type="actions">
                       <button style={secondaryBtn} onClick={() => setSelectedItem(it)}>View Details</button>
                     </td>
@@ -311,8 +312,8 @@ function DetailsModal({ item, onClose }: { item: QueueItem; onClose: () => void 
           <div><strong>Status:</strong> <StatusBadge status={item.status} /></div>
           <div><strong>Priority:</strong> {item.priority}</div>
           <div><strong>Retries:</strong> {item.retries}</div>
-          <div><strong>Created At:</strong> {new Date(item.createdAt).toLocaleString()}</div>
-          <div><strong>Updated At:</strong> {item.updatedAt ? new Date(item.updatedAt).toLocaleString() : 'N/A'}</div>
+          <div><strong>Created At:</strong> {formatDisplayTime(item.createdAt)}</div>
+          <div><strong>Updated At:</strong> {formatDisplayTime(item.updatedAt)}</div>
           <div>
             <strong>Specific Data:</strong>
             {renderPayload(item.payload)}

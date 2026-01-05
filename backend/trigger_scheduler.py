@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 
 from backend.db import engine
 from backend.models import Trigger, TriggerType, Process, Package, Job, JobExecutionLog, QueueItem
+from backend.notification_service import NotificationService
 
 from backend.redis_client import redis_client
 
@@ -165,6 +166,10 @@ class TriggerScheduler:
                     except Exception as e:
                         session.rollback()
                         log.error("Failed to fire trigger %s: %s", t.id, e)
+                        try:
+                            NotificationService(session).notify_trigger_failure(t, str(e))
+                        except Exception:
+                            pass
                         # leave next_fire_at unchanged to retry next tick
 
             queue_triggers = session.exec(
@@ -225,6 +230,10 @@ class TriggerScheduler:
                 except Exception as e:
                     session.rollback()
                     log.error("Failed to process queue trigger %s: %s", t.id, e)
+                    try:
+                        NotificationService(session).notify_trigger_failure(t, str(e))
+                    except Exception:
+                        pass
 
 
 scheduler = TriggerScheduler(engine)

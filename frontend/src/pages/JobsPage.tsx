@@ -5,6 +5,7 @@ import { fetchJobs, createJob, cancelJob } from "../api/jobs";
 import { fetchProcesses } from "../api/processes";
 import { fetchRobots } from "../api/robots";
 import { getProcessTypeLabel, getProcessTypeTone } from "../utils/processTypes";
+import { formatDisplayTime } from "../utils/datetime";
 import React from "react";
 
 export default function JobsPage() {
@@ -155,11 +156,11 @@ export default function JobsPage() {
   }
 
   function startedLabel(j: Job) {
-    return j.startedAt ? new Date(j.startedAt).toLocaleString() : "—";
+    return formatDisplayTime(j.startedAt);
   }
 
   function endedLabel(j: Job) {
-    return j.finishedAt ? new Date(j.finishedAt).toLocaleString() : "—";
+    return formatDisplayTime(j.finishedAt);
   }
 
   function resetFilters() {

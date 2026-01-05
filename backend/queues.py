@@ -1,5 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
+import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -10,6 +12,8 @@ from backend.audit_utils import log_event, diff_dicts
 from backend.db import get_session
 from backend.models import Queue, QueueItem
 from backend.permissions import require_permission
+
+logger = logging.getLogger(__name__)
 
 class CreateQueueRequest(BaseModel):
     name: str
@@ -26,6 +30,40 @@ router = APIRouter(prefix="/queues", tags=["queues"])
 
 def utcnow_iso() -> str:
     return datetime.utcnow().isoformat()
+
+
+def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
+    """Parse ISO timestamp safely; return None when invalid."""
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts)
+    except Exception:
+        logger.debug("Unable to parse timestamp: %s", ts, exc_info=True)
+        return None
+
+
+def _derive_failure_reason(result: Optional[str], error_message: Optional[str]) -> str:
+    """Extract a failure reason hint from result/error payloads."""
+    reason = None
+    if result:
+        try:
+            parsed = json.loads(result)
+            reason = (
+                parsed.get("failure_reason")
+                or parsed.get("failureReason")
+                or parsed.get("reason")
+                or parsed.get("type")
+            )
+        except Exception:
+            logger.debug("Failed to parse queue item result for reason: %s", result, exc_info=True)
+    if not reason and error_message:
+        em = error_message.lower()
+        if "business" in em:
+            reason = "BUSINESS"
+    if not reason:
+        reason = "APPLICATION"
+    return str(reason).upper()
 
 
 @router.get("/", response_model=List[Queue], dependencies=[Depends(require_permission("queues", "view"))])
@@ -59,41 +97,50 @@ def get_queue_stats(queue_id: int, session: Session = Depends(get_session), user
     if not queue:
         raise HTTPException(status_code=404, detail="Queue not found")
     
-    from sqlalchemy import func
-    result = session.exec(
+    # Fetch only the fields we need to compute statistics without stale caches.
+    rows = session.exec(
         select(
-            func.count(QueueItem.id).label('total'),
-            func.sum(QueueItem.status == 'in_progress').label('in_progress'),
-            func.sum(QueueItem.status == 'new').label('new_count'),
-            func.sum(QueueItem.status == 'completed').label('completed'),
-            func.sum(QueueItem.status == 'failed').label('failed')
-        ).where(QueueItem.queue_id == queue_id)
-    ).first()
-    
-    total = result.total or 0
-    in_progress = result.in_progress or 0
-    new_count = result.new_count or 0
-    completed = result.completed or 0
-    failed = result.failed or 0
-    
-    remaining = new_count + in_progress
-    successful = completed
-    app_exceptions = failed
-    biz_exceptions = 0  # not distinguished
-    
-    # For avg processing time, need to calculate
-    completed_items = session.exec(
-        select(QueueItem).where(QueueItem.queue_id == queue_id, QueueItem.status == 'completed')
+            QueueItem.status,
+            QueueItem.result,
+            QueueItem.error_message,
+            QueueItem.locked_at,
+            QueueItem.created_at,
+            QueueItem.updated_at,
+        ).where(QueueItem.queue_id == queue_id, QueueItem.status != "DELETED")
     ).all()
-    avg_processing_time = 0
-    if completed_items:
-        total_time = sum(
-            (datetime.fromisoformat(item.updated_at) - datetime.fromisoformat(item.created_at)).total_seconds()
-            for item in completed_items
-        )
-        avg_processing_time = total_time / len(completed_items)
-    
-    return {
+
+    in_progress = 0
+    new_count = 0
+    successful = 0
+    app_exceptions = 0
+    biz_exceptions = 0
+    durations: List[float] = []
+
+    for row in rows:
+        status = (row.status or "").upper()
+        if status == "IN_PROGRESS":
+            in_progress += 1
+        elif status == "NEW":
+            new_count += 1
+        elif status == "DONE":
+            successful += 1
+        elif status == "FAILED":
+            reason = _derive_failure_reason(row.result, row.error_message)
+            if reason == "BUSINESS":
+                biz_exceptions += 1
+            else:
+                app_exceptions += 1
+
+        if status in {"DONE", "FAILED"}:
+            start_ts = _parse_iso(row.locked_at) or _parse_iso(row.created_at)
+            end_ts = _parse_iso(row.updated_at)
+            if start_ts and end_ts:
+                durations.append(max((end_ts - start_ts).total_seconds(), 0))
+
+    avg_processing_time = sum(durations) / len(durations) if durations else 0
+    remaining = new_count + in_progress
+
+    stats = {
         'inProgress': in_progress,
         'remaining': remaining,
         'avgProcessingTime': avg_processing_time,
@@ -101,6 +148,13 @@ def get_queue_stats(queue_id: int, session: Session = Depends(get_session), user
         'appExceptions': app_exceptions,
         'bizExceptions': biz_exceptions
     }
+
+    try:
+        logger.debug("Computed queue stats", extra={"queue_id": queue_id, "stats": stats, "total_items": len(rows)})
+    except Exception:
+        pass
+
+    return stats
 
 
 @router.post("/", response_model=Queue, status_code=201, dependencies=[Depends(require_permission("queues", "create"))])

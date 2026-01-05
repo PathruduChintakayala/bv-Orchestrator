@@ -17,10 +17,19 @@ class User(SQLModel, table=True):
     username: str = Field(index=True, unique=True)
     password_hash: str
     is_admin: bool = False
+    is_active: bool = Field(default=True, index=True)
+    disabled_at: Optional[datetime] = Field(default=None, index=True)
+    disabled_by_user_id: Optional[int] = Field(default=None, index=True)
+    failed_login_attempts: int = Field(default=0)
+    last_failed_login_at: Optional[datetime] = Field(default=None, index=True)
+    locked_until: Optional[datetime] = Field(default=None, index=True)
+    token_version: int = Field(default=1)
+    last_login: Optional[datetime] = Field(default=None, index=True)
     full_name: Optional[str] = None
     email: Optional[str] = Field(default=None, index=True, unique=True)
     organization: Optional[str] = None
     role: Optional[str] = None
+    preferences_json: Optional[str] = None
 
 class Process(SQLModel, table=True):
     __tablename__ = "processes"
@@ -257,3 +266,31 @@ class SdkAuthSession(SQLModel, table=True):
     status: str = Field(default="pending", index=True)  # pending | confirmed | expired
     expires_at: datetime = Field(index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class UserInvite(SQLModel, table=True):
+    __tablename__ = "user_invites"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(index=True)
+    token_hash: str = Field(index=True)
+    role_ids_json: Optional[str] = None  # JSON array of role IDs to assign on acceptance
+    full_name: Optional[str] = None
+    organization: Optional[str] = None
+    message: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    expires_at: datetime = Field(index=True)
+    created_by_user_id: Optional[int] = Field(default=None, index=True)
+    accepted_at: Optional[datetime] = Field(default=None, index=True)
+    accepted_by_user_id: Optional[int] = Field(default=None, index=True)
+    revoked_at: Optional[datetime] = Field(default=None, index=True)
+
+
+class PasswordResetToken(SQLModel, table=True):
+    __tablename__ = "password_reset_tokens"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    token_hash: str = Field(index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    expires_at: datetime = Field(index=True)
+    used_at: Optional[datetime] = Field(default=None, index=True)
+    created_ip: Optional[str] = None

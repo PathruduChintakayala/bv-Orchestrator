@@ -4,6 +4,7 @@ import type { Machine, MachineMode, MachineStatus } from "../types/machine";
 import type { Robot } from "../types/robot";
 import { createMachine, deleteMachine, fetchMachines, getMachine, regenerateMachineKey } from "../api/machines";
 import { fetchRobots } from "../api/robots";
+import { formatDisplayTime } from "../utils/datetime";
 
 export default function MachinesPage() {
   const [items, setItems] = useState<Machine[]>([]);
@@ -212,7 +213,7 @@ function MachineRow({
       <td style={{ padding: '8px 12px', textAlign: 'left' }}>{modeLabel}</td>
       <td style={{ padding: '8px 12px', textAlign: 'left' }}>{renderStatusBadge(machine.status)}</td>
       <td style={{ padding: '8px 12px', textAlign: 'left' }}>{machine.robotCount}</td>
-      <td style={{ padding: '8px 12px', textAlign: 'left' }}>{machine.lastSeenAt ? new Date(machine.lastSeenAt).toLocaleString() : "—"}</td>
+      <td style={{ padding: '8px 12px', textAlign: 'left' }}>{formatDisplayTime(machine.lastSeenAt)}</td>
       <td style={{ padding: '8px 12px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
         <ActionMenu
           open={menuOpen}
@@ -409,8 +410,8 @@ function MachineDetailsModal({
           <div style={{ fontSize: 14, color: "#111827" }}><span style={{ color: "#6b7280" }}>Name:</span> {machine.name}</div>
           <div style={{ fontSize: 14, color: "#111827" }}><span style={{ color: "#6b7280" }}>Mode:</span> {modeLabel}</div>
           <div style={{ fontSize: 14, color: "#111827" }}><span style={{ color: "#6b7280" }}>Status:</span> {renderStatusBadge(machine.status)}</div>
-          <div style={{ fontSize: 14, color: "#111827" }}><span style={{ color: "#6b7280" }}>Created At:</span> {machine.createdAt ? new Date(machine.createdAt).toLocaleString() : "—"}</div>
-          <div style={{ fontSize: 14, color: "#111827" }}><span style={{ color: "#6b7280" }}>Last Seen:</span> {machine.lastSeenAt ? new Date(machine.lastSeenAt).toLocaleString() : "—"}</div>
+          <div style={{ fontSize: 14, color: "#111827" }}><span style={{ color: "#6b7280" }}>Created At:</span> {formatDisplayTime(machine.createdAt)}</div>
+          <div style={{ fontSize: 14, color: "#111827" }}><span style={{ color: "#6b7280" }}>Last Seen:</span> {formatDisplayTime(machine.lastSeenAt)}</div>
         </div>
 
         {regeneratedKey !== null && (
@@ -512,7 +513,7 @@ function MachineDetailsModal({
                         {r.status}
                       </span>
                     </td>
-                    <td style={{ padding: "6px 0" }}>{r.lastHeartbeat ? new Date(r.lastHeartbeat).toLocaleString() : "—"}</td>
+                    <td style={{ padding: "6px 0" }}>{formatDisplayTime(r.lastHeartbeat)}</td>
                     <td style={{ padding: "6px 0" }}>{r.currentJobId ?? "—"}</td>
                   </tr>
                 ))}

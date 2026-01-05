@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlmodel import Session
 from backend.db import get_session, engine
 from backend.models import Robot
@@ -64,10 +64,10 @@ def next_job(payload: dict, request: Request, session: Session = Depends(get_ses
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/jobs/{job_id}/update")
-def update_job_status(job_id: int, payload: dict, request: Request, session: Session = Depends(get_session), current_robot: Robot = Depends(get_current_robot)):
+def update_job_status(job_id: int, payload: dict, request: Request, background_tasks: BackgroundTasks, session: Session = Depends(get_session), current_robot: Robot = Depends(get_current_robot)):
     service = RunnerService(session)
     try:
-        return service.update_job_status(current_robot, job_id, payload, request)
+        return service.update_job_status(current_robot, job_id, payload, request, background_tasks)
     except ValueError as e:
         if "not found" in str(e).lower():
             raise HTTPException(status_code=404, detail=str(e))

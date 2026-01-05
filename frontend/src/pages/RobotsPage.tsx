@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { Robot, RobotStatus } from "../types/robot";
-import { fetchRobots, createRobot, updateRobot, deleteRobot } from "../api/robots";
+import { fetchRobots, deleteRobot, createRobot, updateRobot } from "../api/robots";
+import { formatDisplayTime } from "../utils/datetime";
 import { fetchMachines } from "../api/machines";
 import type { Machine } from "../types/machine";
 
@@ -129,7 +130,7 @@ export default function RobotsPage() {
                     <td style={{ padding: '8px 12px', textAlign: 'left' }}>
                       <span style={{ padding: '4px 8px', borderRadius: 999, backgroundColor: r.status === 'online' ? '#dcfce7' : '#e5e7eb', color: r.status === 'online' ? '#166534' : '#374151' }}>{r.status}</span>
                     </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.lastHeartbeat ? new Date(r.lastHeartbeat).toLocaleString() : '—'}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'left' }}>{formatDisplayTime(r.lastHeartbeat)}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'left' }}>{r.currentJobId ?? '—'}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'left', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.machineName ?? '—'}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'center' }}>

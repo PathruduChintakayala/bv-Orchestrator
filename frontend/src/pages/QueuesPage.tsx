@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type React from 'react'
 import type { Queue } from '../types/queue'
 import { fetchQueues, fetchQueueStats, createQueue, updateQueue, deleteQueue } from '../api/queues'
+import { formatDisplayTime } from '../utils/datetime'
 
 export default function QueuesPage() {
   const [items, setItems] = useState<Queue[]>([])
@@ -275,8 +276,8 @@ function DetailsModal({ queue, onClose }: { queue: Queue; onClose: () => void })
           <div><strong>Description:</strong> {queue.description || 'No description'}</div>
           <div><strong>Max Retries:</strong> {queue.maxRetries}</div>
           <div><strong>Enforce Unique Reference:</strong> {queue.enforceUniqueReference ? 'Yes' : 'No'}</div>
-          <div><strong>Created At:</strong> {new Date(queue.createdAt).toLocaleString()}</div>
-          <div><strong>Updated At:</strong> {new Date(queue.updatedAt).toLocaleString()}</div>
+          <div><strong>Created At:</strong> {formatDisplayTime(queue.createdAt)}</div>
+          <div><strong>Updated At:</strong> {formatDisplayTime(queue.updatedAt)}</div>
         </div>
       </div>
     </div>

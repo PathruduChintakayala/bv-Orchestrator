@@ -2,7 +2,20 @@ import { useState } from 'react'
 import { useAuth } from '../auth'
 
 export default function Login() {
-  const { setAuthenticatedSession } = useAuth()
+  let auth: ReturnType<typeof useAuth> | null = null
+  try {
+    auth = useAuth()
+  } catch (err) {
+    console.error('Auth context missing', err)
+    return (
+      <div style={{ minHeight: '100vh', width: '100%', display: 'grid', placeItems: 'center', backgroundColor: '#f3f4f6', padding: '24px' }}>
+        <div style={{ width: '100%', maxWidth: '420px', padding: '32px 28px', borderRadius: '18px', backgroundColor: '#ffffff', boxShadow: '0 18px 45px rgba(15, 23, 42, 0.12)', margin: '0 auto', boxSizing: 'border-box', textAlign: 'center' }}>
+          <p style={{ color: '#b91c1c', fontWeight: 600 }}>Something went wrong. Please reload.</p>
+        </div>
+      </div>
+    )
+  }
+  const { setAuthenticatedSession } = auth
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -183,12 +196,10 @@ export default function Login() {
             fontSize: '14px',
           }}
         >
-          <a href="#/forgot" style={{ color: '#2563eb', textDecoration: 'none' }}>
+          <a href="#/forgot-password" style={{ color: '#2563eb', textDecoration: 'none' }}>
             Forgot password?
           </a>
-          <a href="#/register" style={{ color: '#2563eb', textDecoration: 'none' }}>
-            Register now
-          </a>
+          <span style={{ color: '#6b7280' }}>Need access? Ask an admin for an invite.</span>
         </div>
       </div>
     </div>

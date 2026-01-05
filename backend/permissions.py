@@ -3,7 +3,6 @@ from sqlmodel import Session, select
 from typing import Literal, Dict
 
 from backend.db import get_session
-from backend.auth import get_current_user
 from backend.models import RolePermission, UserRole, User
 
 Operation = Literal["view", "create", "edit", "delete"]
@@ -52,7 +51,7 @@ def has_permission(session: Session, user: User, artifact: str, operation: Opera
 def require_permission(artifact: str, operation: Operation):
     def _dep(
         session: Session = Depends(get_session),
-        user: User = Depends(get_current_user),
+        user: User = Depends(__import__("backend.auth", fromlist=["get_current_user"]).get_current_user),
     ):
         if not has_permission(session, user, artifact, operation):
             raise HTTPException(status_code=403, detail="Forbidden")

@@ -10,6 +10,7 @@ import { fetchQueues } from "../api/queues"
 import { fetchRobots } from "../api/robots"
 import { createJob } from "../api/jobs"
 import TriggerModal from "../components/TriggerModal"
+import { formatDisplayTime } from '../utils/datetime'
 
 const primaryBtn: CSSProperties = { padding: "10px 14px", borderRadius: 8, backgroundColor: "#2563eb", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }
 const secondaryBtn: CSSProperties = { padding: "10px 14px", borderRadius: 8, backgroundColor: "#e5e7eb", color: "#111827", border: "none", fontWeight: 600, cursor: "pointer" }
@@ -193,8 +194,8 @@ export default function TriggersPage() {
                     <td>{t.name}</td>
                     <td>{t.type}</td>
                     <td>{processNameById.get(t.processId) || `Process ${t.processId}`}</td>
-                    <td>{t.lastFiredAt ? new Date(t.lastFiredAt).toLocaleString() : "—"}</td>
-                    <td>{t.nextFireAt ? new Date(t.nextFireAt).toLocaleString() : "—"}</td>
+                    <td>{formatDisplayTime(t.lastFiredAt)}</td>
+                    <td>{formatDisplayTime(t.nextFireAt)}</td>
                     <td>{t.enabled ? "Yes" : "No"}</td>
                     <td data-type="actions">
                       <button onClick={() => void handleRunNow(t)} className="btn btn-ghost icon-button" title="Run trigger" aria-label="Run trigger">

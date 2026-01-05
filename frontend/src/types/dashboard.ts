@@ -30,10 +30,33 @@ export interface DashboardSummary {
   runningJobs: number;
   totalProcesses: number;
   activeProcesses: number;
+  totalAssets: number;
+  totalQueues: number;
+  totalTriggers: number;
+  totalAccounts: number;
+  totalMachines: number;
+}
+
+export interface JobHistory24h {
+  total: number;
+  success: number;
+  failed: number;
+  stopped: number;
 }
 
 export interface DashboardOverview {
   summary: DashboardSummary;
   robots: Robot[];
   recentJobs: JobSummary[];
+  jobHistory24h: JobHistory24h;
+  jobStatusCounts: JobStatusCounts;
+}
+
+export interface JobStatusCounts {
+  running: number;
+  pending: number;
+  stopping: number;
+  terminating: number;
+  suspended: number;
+  resumed: number;
 }

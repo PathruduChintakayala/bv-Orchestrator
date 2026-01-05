@@ -1,13 +1,15 @@
 from typing import List, Optional, Dict
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlmodel import Session, select, delete
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from backend.db import get_session
-from backend.auth import get_current_user
-from backend.models import Role, RolePermission, User, UserRole
+from backend.auth import get_current_user, _generate_token, _hash_token, _utcnow
+from backend.models import Role, RolePermission, User, UserRole, PasswordResetToken
 from backend.audit_utils import log_event, diff_dicts
 from backend.permissions import require_permission, ARTIFACTS
+from backend.email_service import EmailService
+from backend.auth import PASSWORD_RESET_TOKEN_TTL_MINUTES
 
 PERMISSIONS = ["view", "create", "edit", "delete"]
 
@@ -215,15 +217,49 @@ def delete_role(role_id: int, request: Request, session: Session = Depends(get_s
 @router.get("/users", response_model=List[dict], dependencies=[Depends(require_permission("users", "view"))])
 def list_users(session: Session = Depends(get_session), user=Depends(get_current_user)):
     users = session.exec(select(User)).all()
-    return [
-        {
-            "id": u.id,
-            "username": u.username,
-            "email": u.email,
-            "is_active": True,
-        }
-        for u in users
-    ]
+    user_ids = [u.id for u in users]
+
+    roles_by_user = {uid: [] for uid in user_ids}
+    if user_ids:
+        user_roles = session.exec(select(UserRole).where(UserRole.user_id.in_(user_ids))).all()
+        role_ids = {ur.role_id for ur in user_roles}
+        role_lookup = {}
+        if role_ids:
+            role_lookup = {r.id: r for r in session.exec(select(Role).where(Role.id.in_(role_ids))).all()}
+        for ur in user_roles:
+            role_obj = role_lookup.get(ur.role_id)
+            if role_obj:
+                roles_by_user.setdefault(ur.user_id, []).append(role_obj.name)
+
+    return [_user_summary(u, roles_by_user.get(u.id, [])) for u in users]
+
+
+def _user_summary(u: User, roles: List[str]) -> Dict:
+    now = datetime.utcnow()
+    status = "active"
+    if not getattr(u, "is_active", True):
+        status = "disabled"
+    elif getattr(u, "locked_until", None) and u.locked_until > now:
+        status = "locked"
+    return {
+        "id": u.id,
+        "username": u.username,
+        "email": u.email,
+        "is_active": getattr(u, "is_active", True),
+        "status": status,
+        "locked_until": u.locked_until.isoformat() if getattr(u, "locked_until", None) else None,
+        "roles": roles,
+        "last_login": getattr(u, "last_login", None).isoformat() if getattr(u, "last_login", None) else None,
+    }
+
+
+def _user_role_names(session: Session, user_id: int) -> List[str]:
+    urs = session.exec(select(UserRole).where(UserRole.user_id == user_id)).all()
+    role_ids = [ur.role_id for ur in urs]
+    if not role_ids:
+        return []
+    roles = session.exec(select(Role).where(Role.id.in_(role_ids))).all()
+    return [r.name for r in roles]
 
 
 @router.get("/users/{user_id}/roles", response_model=dict, dependencies=[Depends(require_permission("users", "view"))])
@@ -231,6 +267,8 @@ def get_user_roles(user_id: int, session: Session = Depends(get_session), user=D
     u = session.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
+    if not u.email and (u.username or "").lower() != "admin":
+        raise HTTPException(status_code=400, detail="User has no email configured")
     # roles for user
     urs = session.exec(select(UserRole).where(UserRole.user_id == user_id)).all()
     role_ids = [ur.role_id for ur in urs]
@@ -271,3 +309,123 @@ def assign_user_roles(user_id: int, payload: dict, request: Request, session: Se
     except Exception:
         pass
     return out
+
+
+@router.post("/users/{user_id}/disable", status_code=200, dependencies=[Depends(require_permission("users", "edit"))])
+def disable_user(user_id: int, request: Request, session: Session = Depends(get_session), actor=Depends(get_current_user)):
+    u = session.get(User, user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    before = _user_summary(u, _user_role_names(session, u.id))
+    u.is_active = False
+    u.disabled_at = _utcnow()
+    u.disabled_by_user_id = getattr(actor, "id", None)
+    u.token_version = (getattr(u, "token_version", 1) or 1) + 1
+    session.add(u)
+    session.commit()
+    try:
+        log_event(
+            session,
+            action="USER_DISABLED",
+            entity_type="user",
+            entity_id=u.id,
+            entity_name=u.username,
+            before=before,
+            after=_user_summary(u, _user_role_names(session, u.id)),
+            metadata={"disabled_by": getattr(actor, "username", None)},
+            request=request,
+            user=actor,
+        )
+    except Exception:
+        pass
+    return _user_summary(u, _user_role_names(session, u.id))
+
+
+@router.post("/users/{user_id}/enable", status_code=200, dependencies=[Depends(require_permission("users", "edit"))])
+def enable_user(user_id: int, request: Request, session: Session = Depends(get_session), actor=Depends(get_current_user)):
+    u = session.get(User, user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    before = _user_summary(u, _user_role_names(session, u.id))
+    u.is_active = True
+    u.disabled_at = None
+    u.disabled_by_user_id = None
+    u.failed_login_attempts = 0
+    u.last_failed_login_at = None
+    u.locked_until = None
+    session.add(u)
+    session.commit()
+    try:
+        log_event(
+            session,
+            action="USER_ENABLED",
+            entity_type="user",
+            entity_id=u.id,
+            entity_name=u.username,
+            before=before,
+            after=_user_summary(u, _user_role_names(session, u.id)),
+            metadata={"enabled_by": getattr(actor, "username", None)},
+            request=request,
+            user=actor,
+        )
+    except Exception:
+        pass
+    return _user_summary(u, _user_role_names(session, u.id))
+
+
+@router.post("/users/{user_id}/password-reset", status_code=200, dependencies=[Depends(require_permission("users", "edit"))])
+def admin_password_reset(
+    user_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    payload: Optional[dict] = None,
+    session: Session = Depends(get_session),
+    actor=Depends(get_current_user),
+):
+    u = session.get(User, user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    token = _generate_token()
+    expires_at = _utcnow() + timedelta(minutes=PASSWORD_RESET_TOKEN_TTL_MINUTES)
+    prt = PasswordResetToken(
+        user_id=u.id,
+        token_hash=_hash_token(token),
+        created_at=_utcnow(),
+        expires_at=expires_at,
+        created_ip=request.client.host if request and request.client else None,
+    )
+    session.add(prt)
+    session.commit()
+    session.refresh(prt)
+
+    base_url = None
+    if payload:
+        base_url = payload.get("reset_base_url") or payload.get("resetBaseUrl")
+    base_url = base_url or f"{str(request.base_url).rstrip('/')}/#/reset-password"
+    link = f"{base_url}?token={token}"
+    subject = "Reset your BV Orchestrator password"
+    body = (
+        "An administrator has requested a password reset for your account.\n\n"
+        f"Reset link: {link}\n"
+        f"This link expires at {expires_at.isoformat()} UTC.\n"
+    )
+    email_sent = EmailService(session).send_email(subject, body, to_addresses=[u.email], background_tasks=background_tasks)
+
+    try:
+        log_event(
+            session,
+            action="ADMIN_PASSWORD_RESET_REQUESTED",
+            entity_type="user",
+            entity_id=u.id,
+            entity_name=u.username,
+            before=None,
+            after=None,
+            metadata={"reset_token_id": prt.id, "requested_by": getattr(actor, "username", None), "email_sent": email_sent},
+            request=request,
+            user=actor,
+        )
+    except Exception:
+        pass
+
+    return {"status": "queued"}

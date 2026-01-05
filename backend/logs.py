@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 from backend.auth import get_current_user
 from backend.db import get_session
 from backend.models import JobExecutionLog
+from backend.timezone_utils import get_display_timezone, to_display_iso
 from backend.permissions import require_permission
 
 router = APIRouter(prefix="/logs", tags=["logs"])
@@ -91,12 +92,13 @@ def list_logs(
     total = _count(session, base_stmt)
     stmt, safe_limit, safe_offset = _paginate(base_stmt, limit, offset, order_safe)
     rows = session.exec(stmt).all()
+    tz = get_display_timezone(session)
 
     items = []
     for row in rows:
         items.append(
             {
-                "timestamp": row.timestamp.isoformat(),
+                "timestamp": to_display_iso(row.timestamp, tz),
                 "level": row.level,
                 "message": row.message,
                 "processId": row.process_id,

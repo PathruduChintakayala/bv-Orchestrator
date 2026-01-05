@@ -18,6 +18,9 @@ function persistAuth(token: string, me?: { user?: any; permissions?: { flat?: Re
   localStorage.setItem('token', token)
   if (me?.user) {
     localStorage.setItem('currentUser', JSON.stringify(me.user))
+    if ((me as any).user?.username) {
+      localStorage.setItem('username', (me as any).user.username)
+    }
   }
   const perms = (me as any)?.permissions?.flat || (me as any)?.permissions
   if (perms && typeof perms === 'object') {

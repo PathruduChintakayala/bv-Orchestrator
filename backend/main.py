@@ -8,7 +8,7 @@ from jose import jwt
 from sqlmodel import Session
 
 from backend.db import engine, init_db
-from backend.auth import router as auth_router, ensure_admin_user
+from backend.auth import router as auth_router, invites_router, ensure_admin_user
 from backend.dashboard import router as dashboard_router
 from backend.assets import router as assets_router
 from backend.processes import router as processes_router
@@ -27,6 +27,7 @@ from backend.runner import router as runner_router, heartbeat_monitor
 from backend.sdk_auth import router as sdk_auth_router
 from backend.job_execution_logs import router as job_execution_logs_router
 from backend.logs import router as logs_router
+from backend.me import router as me_router
 from backend.trigger_scheduler import scheduler
 from backend.models import User
 from backend.auth import SECRET_KEY, ALGORITHM
@@ -116,6 +117,7 @@ async def on_shutdown():
 
 # Auth routes (under /api for consistency)
 app.include_router(auth_router, prefix="/api")
+app.include_router(invites_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
 app.include_router(assets_router, prefix="/api")
 app.include_router(processes_router, prefix="/api")
@@ -133,3 +135,4 @@ app.include_router(runner_router, prefix="/api")
 app.include_router(sdk_auth_router, prefix="/api")
 app.include_router(job_execution_logs_router, prefix="/api")
 app.include_router(logs_router, prefix="/api")
+app.include_router(me_router, prefix="/api")

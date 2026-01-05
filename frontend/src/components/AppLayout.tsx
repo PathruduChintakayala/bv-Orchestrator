@@ -17,11 +17,20 @@ function Header() {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [hash, setHash] = useState(window.location.hash || '#/dashboard');
-  const username = (user?.username || localStorage.getItem('username') || '').trim();
-  const label = username ? username[0].toUpperCase() : 'U';
+  const storedUser = (() => {
+    try { const raw = localStorage.getItem('currentUser'); return raw ? JSON.parse(raw) : null } catch { return null }
+  })();
+  const displayName = (user?.display_name || user?.full_name || storedUser?.display_name || storedUser?.full_name || '').trim();
+  const username = (user?.username || storedUser?.username || localStorage.getItem('username') || '').trim();
+  const labelSource = displayName || username;
+  const label = labelSource ? labelSource[0].toUpperCase() : 'U';
 
   function goToDashboard() {
     window.location.hash = '#/dashboard';
+  }
+  function goAccount(tab: 'account' | 'security') {
+    window.location.hash = tab === 'security' ? '#/me/security' : '#/me/account';
+    setOpen(false);
   }
   function toggle() { setOpen(o => !o); }
   function handleLogout() {
@@ -57,7 +66,7 @@ function Header() {
     { label: 'Packages', href: '#/packages', match: (h: string) => h.startsWith('#/packages') },
     { label: 'Queues', href: '#/queues', match: (h: string) => h.startsWith('#/queues') },
     { label: 'Assets', href: '#/assets', match: (h: string) => h.startsWith('#/assets') },
-    { label: 'Manage Access', href: '#/manage-access', match: (h: string) => h.startsWith('#/manage-access') },
+    { label: 'Manage Access', href: '#/access/users', match: (h: string) => h.startsWith('#/access') || h.startsWith('#/manage-access') },
     { href: '#/audit', label: 'Audit', perm: { artifact: 'audit', op: 'view' } },
     { href: '#/settings', label: 'Settings', perm: { artifact: 'settings', op: 'view' } },
   ]), []);
@@ -78,6 +87,13 @@ function Header() {
           </button>
           {open && (
             <div role="menu" style={{ position: 'absolute', right: 0, marginTop: 8, background: '#fff', border: '1px solid #e5e7eb', boxShadow: '0 8px 20px rgba(0,0,0,0.08)', borderRadius: 8, minWidth: 160, overflow: 'hidden' }}>
+              <button onClick={() => goAccount('account')} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                My Account
+              </button>
+              <button onClick={() => goAccount('security')} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                Security
+              </button>
+              <div style={{ borderTop: '1px solid #e5e7eb' }} />
               <button onClick={handleLogout} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer' }}>
                 Logout
               </button>

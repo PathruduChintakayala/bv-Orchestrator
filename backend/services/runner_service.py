@@ -11,6 +11,7 @@ from backend.repositories.robot_repository import RobotRepository
 from backend.repositories.job_repository import JobRepository
 from backend.packages import ensure_package_metadata
 from backend.audit_utils import log_event
+from backend.notification_service import NotificationService
 
 log = logging.getLogger("runner")
 
@@ -208,7 +209,7 @@ class RunnerService:
             pass
         return {"job": out}
 
-    def update_job_status(self, current_robot: Robot, job_id: int, payload: Dict[str, Any], request: Any) -> Dict[str, Any]:
+    def update_job_status(self, current_robot: Robot, job_id: int, payload: Dict[str, Any], request: Any, background_tasks=None) -> Dict[str, Any]:
         status_in = (payload.get("status") or "").strip().lower()
         if status_in not in ("completed", "failed"):
             raise ValueError("status must be 'completed' or 'failed'")
@@ -253,11 +254,17 @@ class RunnerService:
         
         from backend.services.job_service import JobService
         job_service = JobService(self.session)
-        job_service._update_queue_items_for_job(j, status_in)
+        job_service._update_queue_items_for_job(j, status_in, background_tasks)
 
         self.session.add(j)
         self.session.add(current_robot)
         self.session.commit()
+
+        if status_in == "failed":
+            try:
+                NotificationService(self.session).notify_job_failed(j, background_tasks)
+            except Exception:
+                pass
 
         try:
             log_event(self.session, action="job.status_change", entity_type="job", entity_id=j.id, entity_name=str(j.id), before={"status": before_status}, after={"status": j.status}, metadata={"updated_by": current_robot.name}, request=request, user=None)
@@ -276,6 +283,8 @@ class RunnerService:
         robots = self.session.exec(select(Robot)).all()
         machines = self.session.exec(select(Machine)).all()
 
+        offline_robots = []
+
         for r in robots:
             hb = self._parse_iso_datetime(r.last_heartbeat)
             if hb is None or hb < threshold:
@@ -284,6 +293,7 @@ class RunnerService:
                     r.updated_at = now_str
                     self.session.add(r)
                     changed = True
+                    offline_robots.append(r)
 
         for m in machines:
             seen = self._parse_iso_datetime(m.last_seen_at)
@@ -296,6 +306,13 @@ class RunnerService:
 
         if changed:
             self.session.commit()
+            if offline_robots:
+                try:
+                    notifier = NotificationService(self.session)
+                    for r in offline_robots:
+                        notifier.notify_robot_offline(r)
+                except Exception:
+                    pass
 
     def _parse_iso_datetime(self, value: Optional[str]) -> Optional[datetime]:
         if not value:

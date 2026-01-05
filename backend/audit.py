@@ -8,6 +8,7 @@ from backend.db import get_session
 from backend.auth import get_current_user
 from backend.permissions import require_permission
 from backend.models import AuditEvent, RolePermission, UserRole, User
+from backend.timezone_utils import get_display_timezone, to_display_iso
 
 router = APIRouter(prefix="/audit", tags=["audit"])  # mounted under /api
 
@@ -108,7 +109,7 @@ def _build_message(evt: AuditEvent) -> str:
     return f'User {user} performed action "{evt.action}" on {disp} "{name}".'
 
 
-def _event_to_list_item(evt: AuditEvent) -> Dict[str, Any]:
+def _event_to_list_item(evt: AuditEvent, display_tz: str) -> Dict[str, Any]:
     # Derive a short summary from details if available
     summary = None
     if evt.details:
@@ -126,7 +127,7 @@ def _event_to_list_item(evt: AuditEvent) -> Dict[str, Any]:
     message = _build_message(evt)
     return {
         "id": evt.id,
-        "timestamp": evt.timestamp,
+        "timestamp": to_display_iso(evt.timestamp, display_tz),
         "actor_username": evt.actor_username,
         "action": evt.action,
         "action_type": action_type,
@@ -222,7 +223,8 @@ def list_audit_events(
     total = len(session.exec(stmt).all())
     stmt = stmt.order_by(AuditEvent.timestamp.desc()).offset((page - 1) * page_size).limit(page_size)
     rows = session.exec(stmt).all()
-    items = [_event_to_list_item(r) for r in rows]
+    tz = get_display_timezone(session)
+    items = [_event_to_list_item(r, tz) for r in rows]
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 

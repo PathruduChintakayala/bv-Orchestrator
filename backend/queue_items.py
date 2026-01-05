@@ -1,5 +1,5 @@
 from typing import List, Optional, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Header
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Header, BackgroundTasks
 from sqlmodel import Session, select
 from backend.db import get_session
 from backend.auth import get_current_user
@@ -8,6 +8,8 @@ from datetime import datetime
 import json
 from backend.audit_utils import log_event
 from backend.permissions import require_permission, has_permission
+from backend.timezone_utils import get_display_timezone, to_display_iso
+from backend.notification_service import NotificationService
 from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 
@@ -84,6 +86,25 @@ def utcnow_iso() -> str:
     return datetime.utcnow().isoformat()
 
 
+def _queue_item_to_out(item: QueueItem, tz: str) -> dict:
+    return {
+        "id": item.id,
+        "queue_id": item.queue_id,
+        "reference": item.reference,
+        "status": item.status,
+        "priority": item.priority,
+        "payload": item.payload,
+        "result": item.result,
+        "error_message": item.error_message,
+        "retries": item.retries,
+        "locked_by_robot_id": item.locked_by_robot_id,
+        "locked_at": to_display_iso(item.locked_at, tz),
+        "job_id": item.job_id,
+        "created_at": to_display_iso(item.created_at, tz),
+        "updated_at": to_display_iso(item.updated_at, tz),
+    }
+
+
 @router.get("/", response_model=List[QueueItem], dependencies=[Depends(require_permission("queue_items", "view"))])
 def list_items(
     session: Session = Depends(get_session),
@@ -97,7 +118,8 @@ def list_items(
     if status:
         q = q.where(QueueItem.status == status)
     items = session.exec(q).all()
-    return items
+    tz = get_display_timezone(session)
+    return [_queue_item_to_out(it, tz) for it in items]
 
 
 # IMPORTANT: /next must be defined BEFORE /{item_id} to avoid routing conflict
@@ -146,7 +168,8 @@ def get_item(item_id: str, session: Session = Depends(get_session), user=Depends
     obj = session.get(QueueItem, item_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Queue item not found")
-    return obj
+    tz = get_display_timezone(session)
+    return _queue_item_to_out(obj, tz)
 
 
 @router.post("/", response_model=QueueItem, status_code=201, dependencies=[Depends(require_permission("queue_items", "create"))])
@@ -189,11 +212,12 @@ def create_item(payload: CreateQueueItemRequest, request: Request, session: Sess
         log_event(session, action="queue_item.create", entity_type="queue_item", entity_id=obj.id, entity_name=str(obj.reference or obj.id), before=None, after={"queue_id": obj.queue_id, "status": obj.status}, metadata=None, request=request, user=user)
     except Exception:
         pass
-    return obj
+    tz = get_display_timezone(session)
+    return _queue_item_to_out(obj, tz)
 
 
 @router.put("/{item_id}", response_model=QueueItem, dependencies=[Depends(require_permission("queue_items", "edit"))])
-def update_item(item_id: str, payload: UpdateQueueItemRequest, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
+def update_item(item_id: str, payload: UpdateQueueItemRequest, request: Request, background_tasks: BackgroundTasks, session: Session = Depends(get_session), user=Depends(get_current_user)):
     obj = session.get(QueueItem, item_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Queue item not found")
@@ -215,7 +239,14 @@ def update_item(item_id: str, payload: UpdateQueueItemRequest, request: Request,
             log_event(session, action="queue_item.update", entity_type="queue_item", entity_id=obj.id, entity_name=str(obj.reference or obj.id), before=None, after={"status": obj.status}, metadata=None, request=request, user=user)
     except Exception:
         pass
-    return obj
+    try:
+        queue = session.get(Queue, obj.queue_id)
+        if obj.status and obj.status.upper() == "FAILED" and queue and getattr(queue, "max_retries", 0) and getattr(obj, "retries", 0) >= getattr(queue, "max_retries", 0):
+            NotificationService(session).notify_queue_item_failed(obj, queue, background_tasks)
+    except Exception:
+        pass
+    tz = get_display_timezone(session)
+    return _queue_item_to_out(obj, tz)
 
 
 @router.delete("/{item_id}", status_code=204, dependencies=[Depends(require_permission("queue_items", "delete"))])
@@ -281,6 +312,7 @@ def set_item_status_runtime(
     item_id: str,
     payload: UpdateQueueItemRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     auth=Depends(get_runtime_auth)
 ):
@@ -305,6 +337,13 @@ def set_item_status_runtime(
         actor_name = getattr(auth, "username", None) or getattr(auth, "name", "system")
         if before_status != item.status:
             log_event(session, action="queue_item.status_change", entity_type="queue_item", entity_id=item.id, entity_name=str(item.reference or item.id), before={"status": before_status}, after={"status": item.status}, metadata={"status_from": before_status, "status_to": item.status}, request=request, actor_username=actor_name)
+    except Exception:
+        pass
+
+    try:
+        queue = session.get(Queue, item.queue_id)
+        if item.status and item.status.upper() == "FAILED" and queue and getattr(queue, "max_retries", 0) and getattr(item, "retries", 0) >= getattr(queue, "max_retries", 0):
+            NotificationService(session).notify_queue_item_failed(item, queue, background_tasks)
     except Exception:
         pass
 

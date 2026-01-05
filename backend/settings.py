@@ -1,18 +1,23 @@
-from typing import Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Request
+from typing import Dict, Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlmodel import Session, select
 from datetime import datetime
 import json
+from pydantic import BaseModel
 
 from backend.db import get_session
 from backend.auth import get_current_user
 from backend.permissions import require_permission
 from backend.models import Setting, RolePermission, UserRole, User
 from backend.audit_utils import log_event, diff_dicts
+from backend.email_service import EmailService
+from backend.timezone_utils import get_display_timezone, to_display_iso
 
 router = APIRouter(prefix="/settings", tags=["settings"])  # mounted under /api
 
 ALLOWED_GROUPS = {"general", "security", "jobs", "email", "logging"}
+DEFAULT_TIMEZONE = "UTC"
+SECRET_MASK = "********"
 
 
 def utcnow_iso() -> str:
@@ -58,6 +63,8 @@ def _parse_value(value: str, type_: str):
 
 
 def _serialize_value(val: Any, type_: str) -> str:
+    if val is None:
+        return ""
     if type_ == "int":
         return str(int(val))
     if type_ == "bool":
@@ -77,6 +84,21 @@ def _build_group_payload(session: Session, group: str) -> Dict[str, Any]:
     for s in rows:
         suffix = s.key.split(".", 1)[1] if "." in s.key else s.key
         data[suffix] = _parse_value(s.value, s.type)
+    if group == "general" and "timezone" not in data:
+        data["timezone"] = DEFAULT_TIMEZONE
+    if group == "security":
+        data.setdefault("max_failed_logins", 5)
+        data.setdefault("lockout_minutes", 15)
+    if group == "email":
+        data.setdefault("enabled", False)
+        data.setdefault("smtp_use_tls", False)
+        data.setdefault("smtp_use_ssl", False)
+        has_pw = bool(data.get("smtp_password"))
+        if has_pw:
+            data["smtp_password"] = SECRET_MASK
+        else:
+            data["smtp_password"] = ""
+        data["smtp_password_set"] = has_pw
     return data
 
 
@@ -100,6 +122,26 @@ def update_settings_group(group: str, payload: Dict[str, Any], request: Request,
     if group not in ALLOWED_GROUPS:
         raise HTTPException(status_code=400, detail="Unknown settings group")
 
+    if group == "email":
+        enabled = bool(payload.get("enabled", False))
+        host = payload.get("smtp_host")
+        port = payload.get("smtp_port")
+        from_address = payload.get("from_address")
+        use_tls = bool(payload.get("smtp_use_tls", False))
+        use_ssl = bool(payload.get("smtp_use_ssl", False))
+        if use_tls and use_ssl:
+            raise HTTPException(status_code=400, detail="Choose either TLS or SSL, not both")
+        if enabled:
+            missing = []
+            if not host:
+                missing.append("smtp_host")
+            if port in (None, ""):
+                missing.append("smtp_port")
+            if not from_address:
+                missing.append("from_address")
+            if missing:
+                raise HTTPException(status_code=400, detail=f"Missing required fields when email is enabled: {', '.join(missing)}")
+
     # Load existing for before/after diff
     before = _build_group_payload(session, group)
 
@@ -112,6 +154,9 @@ def update_settings_group(group: str, payload: Dict[str, Any], request: Request,
         full_key = f"{group}.{key}" if not key.startswith(f"{group}.") else key
         # Infer type if setting not present, else reuse existing type
         s = session.exec(select(Setting).where(Setting.key == full_key)).first()
+        if group == "email" and key == "smtp_password" and isinstance(val, str) and val.strip() == SECRET_MASK and s is not None:
+            # Keep existing secret if mask is sent back
+            continue
         if s is None:
             # Infer type
             if isinstance(val, bool):
@@ -149,3 +194,27 @@ def update_settings_group(group: str, payload: Dict[str, Any], request: Request,
     )
 
     return after
+
+
+class TestEmailRequest(BaseModel):
+    to: Optional[str] = None
+
+
+@router.post("/email/test")
+def send_test_email(payload: TestEmailRequest, background_tasks: BackgroundTasks, session: Session = Depends(get_session), user: User = Depends(get_current_user), _perm: bool = Depends(require_permission("settings", "view"))):
+    svc = EmailService(session)
+    tz = get_display_timezone(session)
+    target = payload.to or getattr(user, "email", None)
+    if not target:
+        # fallback to from_address inside service if present
+        target = None
+    subject = "BV Orchestrator: Test Email"
+    body = (
+        "This is a test notification from BV Orchestrator.\n\n"
+        f"Sent at: {to_display_iso(utcnow_iso(), tz)}\n"
+        f"User: {getattr(user, 'username', 'unknown')}\n"
+    )
+    ok = svc.send_email(subject=subject, body=body, to_addresses=[target] if target else None, background_tasks=background_tasks)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Email delivery is disabled or not configured")
+    return {"status": "queued"}

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import type { ChangeEvent } from "react";
 import { createPortal } from "react-dom";
 import type { Package } from "../types/package";
-import { fetchPackages, uploadPackage, deletePackage, downloadPackageVersion } from "../api/packages";
+import { fetchPackages, uploadPackage, deletePackage } from "../api/packages";
+import { formatDisplayTime } from "../utils/datetime";
 
 export default function PackagesPage() {
   const [packages, setPackages] = useState<Package[]>([]);
@@ -186,7 +187,7 @@ export default function PackagesPage() {
                     <td style={{ padding: '6px 0' }}>{row.name}</td>
                     <td style={{ padding: '6px 0' }}>{row.typeLabel}</td>
                     <td style={{ padding: '6px 0' }}>{row.totalVersions}</td>
-                    <td style={{ padding: '6px 0' }}>{new Date(row.updatedAt).toLocaleString()}</td>
+                    <td style={{ padding: '6px 0' }}>{formatDisplayTime(row.updatedAt)}</td>
                     <td style={{ padding: '6px 0' }}>
                       <button style={primaryBtn} onClick={() => openVersions(row.name)}>View Versions</button>
                     </td>
@@ -302,7 +303,7 @@ function VersionsModal({
                     <td style={{ padding: '6px 0', color: active ? '#2563eb' : '#059669', fontWeight: 600 }}>
                       {active ? 'Yes' : 'No'}
                     </td>
-                    <td style={{ padding: '6px 0' }}>{new Date(v.updatedAt).toLocaleString()}</td>
+                    <td style={{ padding: '6px 0' }}>{formatDisplayTime(v.updatedAt)}</td>
                     <td style={{ padding: '6px 0' }}>
                       <ActionMenu
                         open={menuOpenId === v.id}

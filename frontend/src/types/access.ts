@@ -33,9 +33,22 @@ export interface UserSummary {
   username: string
   email?: string | null
   isActive: boolean
+  status: 'active' | 'disabled' | 'locked'
+  lockedUntil?: string | null
+  roles?: string[]
+  lastLogin?: string | null
 }
 
 export interface UserRoles {
   user: UserSummary
   roles: Role[]
+}
+
+export interface UserInvite {
+  id: number
+  email: string
+  status: 'pending' | 'accepted' | 'expired' | 'revoked'
+  invitedBy: string | null
+  expiresAt: string | null
+  createdAt: string
 }

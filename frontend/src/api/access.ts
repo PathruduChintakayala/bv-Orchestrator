@@ -1,4 +1,4 @@
-import type { Role, RolePermission, UserRoles, UserSummary } from '../types/access'
+import type { Role, RolePermission, UserInvite, UserRoles, UserSummary } from '../types/access'
 
 function authHeaders() {
   const token = localStorage.getItem('token') || ''
@@ -72,11 +72,33 @@ export async function deleteRole(id: number): Promise<void> {
 }
 
 function toUserSummary(u: any): UserSummary {
+  const statusRaw = typeof u.status === 'string' ? (u.status as string).toLowerCase() : ''
+  let status: UserSummary['status'] = 'active'
+  if (statusRaw === 'disabled') status = 'disabled'
+  else if (statusRaw === 'locked') status = 'locked'
+  else if (statusRaw === 'active') status = 'active'
+  else if (u.is_active === false) status = 'disabled'
+  else if (u.locked_until) status = 'locked'
   return {
     id: u.id,
     username: u.username,
     email: u.email ?? null,
-    isActive: u.is_active ?? true,
+    isActive: u.is_active ?? status !== 'disabled',
+    status,
+    lockedUntil: u.locked_until ?? null,
+    roles: Array.isArray(u.roles) ? u.roles.map((r: any) => String(r)) : [],
+    lastLogin: u.last_login ?? null,
+  }
+}
+
+function toInvite(i: any): UserInvite {
+  return {
+    id: i.id,
+    email: i.email,
+    status: ((i.status || 'pending') as string).toLowerCase() as UserInvite['status'],
+    invitedBy: i.invited_by ?? null,
+    expiresAt: i.expires_at ?? null,
+    createdAt: i.created_at,
   }
 }
 
@@ -99,4 +121,46 @@ export async function assignUserRoles(userId: number, roleIds: number[]): Promis
   if (!res.ok) throw new Error(await res.text())
   const data = await res.json()
   return { user: toUserSummary(data.user), roles: (data.roles || []).map(toRole) }
+}
+
+export async function disableUser(userId: number): Promise<UserSummary> {
+  const res = await fetch(`/api/access/users/${userId}/disable`, { method: 'POST', headers: authHeaders() })
+  if (!res.ok) throw new Error(await res.text())
+  return toUserSummary(await res.json())
+}
+
+export async function enableUser(userId: number): Promise<UserSummary> {
+  const res = await fetch(`/api/access/users/${userId}/enable`, { method: 'POST', headers: authHeaders() })
+  if (!res.ok) throw new Error(await res.text())
+  return toUserSummary(await res.json())
+}
+
+export async function adminPasswordReset(userId: number): Promise<void> {
+  const res = await fetch(`/api/access/users/${userId}/password-reset`, { method: 'POST', headers: authHeaders() })
+  if (!res.ok) throw new Error(await res.text())
+}
+
+export async function fetchInvites(): Promise<UserInvite[]> {
+  const res = await fetch('/api/users/invites', { headers: authHeaders() })
+  if (!res.ok) throw new Error(await res.text())
+  return (await res.json()).map(toInvite)
+}
+
+export async function sendInvite(payload: { email: string; roleIds?: number[] }): Promise<UserInvite> {
+  const body: any = { email: payload.email }
+  if (payload.roleIds?.length) body.role_ids = payload.roleIds
+  const res = await fetch('/api/users/invite', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(await res.text())
+  return toInvite(await res.json())
+}
+
+export async function resendInvite(inviteId: number): Promise<UserInvite> {
+  const res = await fetch(`/api/users/invite/${inviteId}/resend`, { method: 'POST', headers: authHeaders() })
+  if (!res.ok) throw new Error(await res.text())
+  return toInvite(await res.json())
+}
+
+export async function revokeInvite(inviteId: number): Promise<void> {
+  const res = await fetch(`/api/users/invite/${inviteId}`, { method: 'DELETE', headers: authHeaders() })
+  if (!res.ok) throw new Error(await res.text())
 }

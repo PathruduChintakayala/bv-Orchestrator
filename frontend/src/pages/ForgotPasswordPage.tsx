@@ -3,7 +3,6 @@ import { useState } from 'react'
 export default function ForgotPasswordPage() {
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
-  const [newPassword, setNewPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -12,18 +11,16 @@ export default function ForgotPasswordPage() {
     setMessage(null)
     setLoading(true)
     try {
-      const res = await fetch('/api/auth/forgot', {
+      const res = await fetch('/api/auth/password-reset/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, newPassword }),
+        body: JSON.stringify({ username, email }),
       })
       if (!res.ok) {
         const text = await res.text()
-        throw new Error(text || 'Reset failed')
+        throw new Error(text || 'Reset request failed')
       }
-      setMessage('Password reset successful. You can log in now.')
-      // Optional: route to login
-      window.location.hash = '#/'
+      setMessage('If an account exists, a reset link has been sent to the email provided.')
     } catch (err: any) {
       setMessage(err.message || 'Error')
     } finally {
@@ -72,19 +69,15 @@ export default function ForgotPasswordPage() {
             <label style={label}>Email</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Your email" style={input} />
           </div>
-          <div style={{ marginBottom: 24 }}>
-            <label style={label}>New Password</label>
-            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password" style={input} />
-          </div>
           <button type="submit" disabled={loading} style={{ width: '100%', padding: 12, borderRadius: 8, border: 'none', fontSize: 16, fontWeight: 600, background: '#2563eb', color: '#fff' }}>
-            {loading ? 'Resetting…' : 'Reset Password'}
+            {loading ? 'Sending…' : 'Send reset link'}
           </button>
         </form>
         {message && (
           <p style={{ marginTop: 12, color: message.includes('successful') ? '#065f46' : '#b91c1c' }}>{message}</p>
         )}
         <div style={{ marginTop: 16, textAlign: 'center' }}>
-          <a href="#/" style={{ color: '#2563eb', textDecoration: 'none' }}>Back to login</a>
+          <a href="#/login" style={{ color: '#2563eb', textDecoration: 'none' }}>Back to login</a>
         </div>
       </div>
     </div>

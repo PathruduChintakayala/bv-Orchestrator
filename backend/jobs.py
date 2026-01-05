@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from backend.db import get_session
 from backend.auth import get_current_user
 from backend.permissions import require_permission
@@ -29,10 +29,10 @@ def create_job(payload: dict, request: Request, session=Depends(get_session), us
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.put("/{job_id}", dependencies=[Depends(get_current_user), Depends(require_permission("jobs", "edit"))])
-def update_job(job_id: int, payload: dict, request: Request, session=Depends(get_session), user=Depends(get_current_user)):
+def update_job(job_id: int, payload: dict, request: Request, background_tasks: BackgroundTasks, session=Depends(get_session), user=Depends(get_current_user)):
     service = JobService(session)
     try:
-        return service.update_job(job_id, payload, user, request)
+        return service.update_job(job_id, payload, user, request, background_tasks)
     except ValueError as e:
         if "not found" in str(e).lower():
             raise HTTPException(status_code=404, detail=str(e))

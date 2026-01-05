@@ -5,6 +5,8 @@ from sqlmodel import Session, select
 from backend.models import Job, Process, Robot, Package, QueueItem, Machine
 from backend.repositories.job_repository import JobRepository
 from backend.audit_utils import log_event
+from backend.timezone_utils import get_display_timezone, to_display_iso
+from backend.notification_service import NotificationService
 
 def now_iso():
     return datetime.now().isoformat(timespec='seconds')
@@ -13,6 +15,12 @@ class JobService:
     def __init__(self, session: Session):
         self.session = session
         self.repo = JobRepository(session)
+        self._display_tz: Optional[str] = None
+
+    def _tz(self) -> str:
+        if self._display_tz is None:
+            self._display_tz = get_display_timezone(self.session)
+        return self._display_tz
 
     def list_jobs(self, status: Optional[str] = None, process_id: Optional[int] = None, robot_id: Optional[int] = None) -> List[Dict[str, Any]]:
         jobs = self.repo.get_jobs(status, process_id, robot_id)
@@ -109,7 +117,7 @@ class JobService:
             pass
         return out
 
-    def update_job(self, job_id: int, payload: Dict[str, Any], user: Any, request: Any) -> Dict[str, Any]:
+    def update_job(self, job_id: int, payload: Dict[str, Any], user: Any, request: Any, background_tasks=None) -> Dict[str, Any]:
         j = self.repo.get_by_id(job_id)
         if not j:
             raise ValueError("Job not found")
@@ -159,7 +167,7 @@ class JobService:
             j.error_message = payload.get("error_message") or None
 
         if final_status:
-            self._update_queue_items_for_job(j, final_status)
+            self._update_queue_items_for_job(j, final_status, background_tasks)
 
         self.repo.update(j)
         out = self.job_to_out(j)
@@ -170,6 +178,12 @@ class JobService:
                 log_event(self.session, action="job.update", entity_type="job", entity_id=j.id, entity_name=str(j.id), before=None, after=out, metadata=None, request=request, user=user)
         except Exception:
             pass
+
+        if final_status == "failed":
+            try:
+                NotificationService(self.session).notify_job_failed(j, background_tasks)
+            except Exception:
+                pass
         return out
 
     def cancel_job(self, job_id: int, user: Any, request: Any) -> Dict[str, Any]:
@@ -187,7 +201,7 @@ class JobService:
                 pass
         return self.job_to_out(j)
 
-    def _update_queue_items_for_job(self, job: Job, final_status: str):
+    def _update_queue_items_for_job(self, job: Job, final_status: str, background_tasks=None):
         raw_ids = getattr(job, "queue_item_ids", None)
         if not raw_ids:
             return
@@ -197,6 +211,7 @@ class JobService:
             return
         target_status = "DONE" if final_status.lower() == "completed" else "FAILED"
         now = now_iso()
+        alerts = []
         for qid in ids:
             try:
                 qi = self.session.exec(select(QueueItem).where(QueueItem.id == qid)).first()
@@ -213,8 +228,25 @@ class JobService:
                 qi.error_message = job.error_message
             qi.updated_at = now
             self.session.add(qi)
+            if target_status == "FAILED":
+                try:
+                    from backend.models import Queue
+                    queue = self.session.exec(select(Queue).where(Queue.id == qi.queue_id)).first()
+                    if queue and getattr(queue, "max_retries", 0) and getattr(qi, "retries", 0) >= getattr(queue, "max_retries", 0):
+                        alerts.append((qi, queue))
+                except Exception:
+                    pass
+        if alerts:
+            try:
+                notifier = NotificationService(self.session)
+                for qi, queue in alerts:
+                    notifier.notify_queue_item_failed(qi, queue, background_tasks)
+            except Exception:
+                pass
 
     def job_to_out(self, j: Job) -> dict:
+        tz = self._tz()
+
         def parse_json(s: Optional[str]):
             if not s:
                 return None
@@ -235,8 +267,8 @@ class JobService:
                     "script_path": p.script_path,
                     "is_active": p.is_active,
                     "version": p.version,
-                    "created_at": p.created_at,
-                    "updated_at": p.updated_at,
+                    "created_at": to_display_iso(p.created_at, tz),
+                    "updated_at": to_display_iso(p.updated_at, tz),
                 }
         if j.robot_id:
             r = self.session.exec(select(Robot).where(Robot.id == j.robot_id)).first()
@@ -251,10 +283,10 @@ class JobService:
                     "status": r.status,
                     "machine_name": machine_name,
                     "machine_info": r.machine_info,
-                    "last_heartbeat": r.last_heartbeat,
+                    "last_heartbeat": to_display_iso(r.last_heartbeat, tz),
                     "current_job_id": r.current_job_id,
-                    "created_at": r.created_at,
-                    "updated_at": r.updated_at,
+                    "created_at": to_display_iso(r.created_at, tz),
+                    "updated_at": to_display_iso(r.updated_at, tz),
                 }
         # Use stored machine_name from job, fallback to robot's machine if not set (backward compatibility)
         machine_name = getattr(j, "machine_name", None)
@@ -279,9 +311,9 @@ class JobService:
             "result": parse_json(j.result),
             "error_message": j.error_message,
             "logs_path": j.logs_path,
-            "created_at": j.created_at,
-            "started_at": j.started_at,
-            "finished_at": j.finished_at,
+            "created_at": to_display_iso(j.created_at, tz),
+            "started_at": to_display_iso(j.started_at, tz),
+            "finished_at": to_display_iso(j.finished_at, tz),
             "process": process_out,
             "robot": robot_out,
         }

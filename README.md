@@ -1178,6 +1178,11 @@ The frontend uses a sidebar navigation with sections:
 
 ### User Authentication
 
+- Public self-registration is disabled; admins must create invites via `POST /api/auth/invite` (requires admin JWT). Invited users finish signup at `#/invite/accept?token=...`, which calls `POST /api/auth/invite/accept`.
+- Password resets use emailed links: request via `POST /api/auth/password-reset/request` (UI: `#/forgot`), then complete with `POST /api/auth/password-reset/confirm` using the token from `#/reset-password?token=...`.
+- Invite tokens expire in 72 hours; password reset tokens expire in 60 minutes and are single-use and hashed server-side.
+- Configure SMTP in Settings > Email (or `email.*` settings) so invite and reset emails can be delivered.
+
 - **JWT Tokens**: 480-minute expiration
 - **Password Hashing**: bcrypt
 - **Default Admin**: `admin` / `admin123` (change in production!)
