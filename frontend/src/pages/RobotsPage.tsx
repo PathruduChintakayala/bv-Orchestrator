@@ -103,9 +103,9 @@ export default function RobotsPage() {
             <h1 className="page-title" style={{ margin: 0 }}>Robots</h1>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => load(search)} style={secondaryBtn} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search robots…" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
             <button onClick={() => load(search)} style={secondaryBtn}>Search</button>
+            <button onClick={() => load(search)} style={secondaryBtn} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
             <button onClick={openNew} style={primaryBtn}>New Robot</button>
           </div>
         </div>
