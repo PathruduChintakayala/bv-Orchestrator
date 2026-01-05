@@ -11,6 +11,8 @@ export interface MyProfile {
   roles: string[]
   tokenVersion: number
   timezone?: string | null
+  avatarUrl?: string | null
+  avatarUpdatedAt?: string | null
 }
 
 export interface SessionInfo {

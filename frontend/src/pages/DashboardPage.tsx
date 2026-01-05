@@ -19,17 +19,23 @@ export default function DashboardPage() {
   if (!data) return null;
 
   return (
-    <div style={{ padding: 24 }}>
-      <Header />
-      <SummaryTiles data={data} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-        <JobStatusPanel counts={data.jobStatusCounts} />
-        <JobHistoryPanel history={data.jobHistory24h} />
-      </div>
-      <div style={{ marginTop: 24 }}>
+    <div style={{ padding: 16 }}>
+      <div className="page-shell" style={{ gap: 12 }}>
+        <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <h1 className="page-title" style={{ margin: 0 }}>Dashboard</h1>
+          </div>
+        </div>
+
+        <SummaryTiles data={data} />
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+          <JobStatusPanel counts={data.jobStatusCounts} />
+          <JobHistoryPanel history={data.jobHistory24h} />
+        </div>
+
         <TransactionsPanel />
-      </div>
-      <div style={{ marginTop: 24 }}>
+
         <RecentJobsPanel jobs={data.recentJobs} />
       </div>
     </div>

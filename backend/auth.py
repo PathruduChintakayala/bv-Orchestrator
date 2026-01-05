@@ -304,6 +304,8 @@ def get_me(session: Session = Depends(get_session), user: User = Depends(get_cur
             "last_login": to_display_iso(getattr(user, "last_login", None), tz),
             "preferences": prefs,
             "token_version": getattr(user, "token_version", 1) or 1,
+            "avatar_url": getattr(user, "avatar_url", None),
+            "avatar_updated_at": to_display_iso(getattr(user, "avatar_updated_at", None), tz),
         },
         "roles": [{"id": r.id, "name": r.name} for r in roles],
         "permissions": perms,

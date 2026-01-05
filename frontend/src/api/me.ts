@@ -23,6 +23,8 @@ function toProfile(raw: any): MyProfile {
     roles: Array.isArray(raw.roles) ? raw.roles : [],
     tokenVersion: Number(raw.token_version ?? raw.tokenVersion ?? 1),
     timezone: raw.timezone ?? null,
+    avatarUrl: raw.avatar_url ?? raw.avatarUrl ?? null,
+    avatarUpdatedAt: raw.avatar_updated_at ?? raw.avatarUpdatedAt ?? null,
   }
 }
 
@@ -76,4 +78,18 @@ export async function logoutOtherSessions(): Promise<{ accessToken: string; toke
   if (!res.ok) throw new Error(await res.text())
   const data = await res.json()
   return { accessToken: data.access_token, tokenVersion: Number(data.token_version ?? data.tokenVersion ?? 1) }
+}
+
+export async function uploadMyAvatar(file: File): Promise<MyProfile> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch('/api/me/avatar', { method: 'POST', headers: authHeaders(), body: fd as any })
+  if (!res.ok) throw new Error(await res.text())
+  return toProfile(await res.json())
+}
+
+export async function deleteMyAvatar(): Promise<MyProfile> {
+  const res = await fetch('/api/me/avatar', { method: 'DELETE', headers: authHeaders() })
+  if (!res.ok) throw new Error(await res.text())
+  return toProfile(await res.json())
 }

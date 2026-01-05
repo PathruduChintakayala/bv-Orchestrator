@@ -1,7 +1,10 @@
 import json
+import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 
 from backend.db import get_session
@@ -17,6 +20,35 @@ from backend.audit_utils import diff_dicts, log_event
 from backend.timezone_utils import get_display_timezone, to_display_iso
 
 router = APIRouter(prefix="/me", tags=["me"])
+
+AVATAR_DIR = os.path.join(os.path.dirname(__file__), "avatars_store")
+ALLOWED_AVATAR_TYPES: Dict[str, str] = {"image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg"}
+MAX_AVATAR_BYTES = 2 * 1024 * 1024
+
+
+def _ensure_avatar_dir():
+    os.makedirs(AVATAR_DIR, exist_ok=True)
+
+
+def _avatar_path_for_user(user_id: int, ext: Optional[str] = None) -> Optional[str]:
+    if ext:
+        return os.path.join(AVATAR_DIR, f"user-{user_id}{ext}")
+    for candidate in (".png", ".jpg", ".jpeg"):
+        path = os.path.join(AVATAR_DIR, f"user-{user_id}{candidate}")
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _avatar_url_for_user(user_id: int, updated_at: Optional[datetime]) -> str:
+    base = f"/api/me/avatar/{user_id}"
+    if updated_at:
+        try:
+            ts = int(updated_at.timestamp())
+            return f"{base}?ts={ts}"
+        except Exception:
+            return base
+    return base
 
 
 def _load_preferences(raw: Optional[object]) -> Dict[str, Any]:
@@ -73,6 +105,8 @@ def _profile_payload(session: Session, user: User) -> Dict[str, Any]:
         "roles": _user_roles(session, user),
         "token_version": getattr(user, "token_version", 1) or 1,
         "timezone": tz,
+        "avatar_url": getattr(user, "avatar_url", None),
+        "avatar_updated_at": to_display_iso(getattr(user, "avatar_updated_at", None), tz),
     }
 
 
@@ -137,6 +171,115 @@ def update_profile(payload: Dict[str, Any], request: Request, session: Session =
     return _profile_payload(session, user)
 
 
+@router.post("/avatar")
+async def upload_avatar(
+    request: Request,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    if not file:
+        raise HTTPException(status_code=400, detail="Avatar file is required")
+    if file.content_type not in ALLOWED_AVATAR_TYPES:
+        raise HTTPException(status_code=400, detail="Only PNG or JPG images are supported")
+
+    _ensure_avatar_dir()
+    data = await file.read(MAX_AVATAR_BYTES + 1)
+    if not data:
+        raise HTTPException(status_code=400, detail="Avatar file is empty")
+    if len(data) > MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=400, detail="Avatar file is too large (max 2MB)")
+
+    ext = ALLOWED_AVATAR_TYPES[file.content_type]
+    existing = _avatar_path_for_user(user.id)
+    before = {
+        "avatar_url": getattr(user, "avatar_url", None),
+        "avatar_updated_at": getattr(user, "avatar_updated_at", None),
+    }
+
+    if existing and os.path.exists(existing):
+        try:
+            os.remove(existing)
+        except Exception:
+            pass
+
+    target = _avatar_path_for_user(user.id, ext)
+    with open(target, "wb") as handle:
+        handle.write(data)
+
+    user.avatar_updated_at = _utcnow()
+    user.avatar_url = _avatar_url_for_user(user.id, user.avatar_updated_at)
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    after = {
+        "avatar_url": getattr(user, "avatar_url", None),
+        "avatar_updated_at": getattr(user, "avatar_updated_at", None),
+    }
+
+    try:
+        log_event(
+            session,
+            action="USER_AVATAR_UPDATED",
+            entity_type="user",
+            entity_id=user.id,
+            entity_name=user.username,
+            before=before,
+            after=after,
+            metadata={"content_type": file.content_type, "size_bytes": len(data)},
+            request=request,
+            user=user,
+        )
+    except Exception:
+        pass
+
+    return _profile_payload(session, user)
+
+
+@router.delete("/avatar")
+def delete_avatar(request: Request, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    before = {
+        "avatar_url": getattr(user, "avatar_url", None),
+        "avatar_updated_at": getattr(user, "avatar_updated_at", None),
+    }
+    existing = _avatar_path_for_user(user.id)
+    if existing and os.path.exists(existing):
+        try:
+            os.remove(existing)
+        except Exception:
+            pass
+
+    user.avatar_url = None
+    user.avatar_updated_at = None
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    after = {
+        "avatar_url": None,
+        "avatar_updated_at": None,
+    }
+
+    try:
+        log_event(
+            session,
+            action="USER_AVATAR_REMOVED",
+            entity_type="user",
+            entity_id=user.id,
+            entity_name=user.username,
+            before=before,
+            after=after,
+            metadata=None,
+            request=request,
+            user=user,
+        )
+    except Exception:
+        pass
+
+    return _profile_payload(session, user)
+
+
 @router.post("/change-password")
 def change_password(payload: Dict[str, Any], request: Request, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     current_password = payload.get("current_password") or payload.get("currentPassword") or ""
@@ -187,6 +330,15 @@ def change_password(payload: Dict[str, Any], request: Request, session: Session 
         pass
 
     return {"status": "ok", "token_version": getattr(user, "token_version", 1), "access_token": new_token}
+
+
+@router.get("/avatar/{user_id}")
+def fetch_avatar(user_id: int):
+    path = _avatar_path_for_user(user_id)
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Avatar not found")
+    media_type = "image/png" if path.endswith(".png") else "image/jpeg"
+    return FileResponse(path, media_type=media_type)
 
 
 @router.get("/sessions")

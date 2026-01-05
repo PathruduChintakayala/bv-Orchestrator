@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../auth';
+import { Avatar } from './Avatar';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -22,8 +23,8 @@ function Header() {
   })();
   const displayName = (user?.display_name || user?.full_name || storedUser?.display_name || storedUser?.full_name || '').trim();
   const username = (user?.username || storedUser?.username || localStorage.getItem('username') || '').trim();
-  const labelSource = displayName || username;
-  const label = labelSource ? labelSource[0].toUpperCase() : 'U';
+  const avatarUrl = user?.avatar_url || storedUser?.avatar_url || (storedUser as any)?.avatarUrl || null;
+  const avatarUser = { id: user?.id || storedUser?.id || username, username, display_name: displayName, full_name: user?.full_name || storedUser?.full_name, avatar_url: avatarUrl };
 
   function goToDashboard() {
     window.location.hash = '#/dashboard';
@@ -82,8 +83,8 @@ function Header() {
           BV Orchestrator
         </div>
         <div ref={menuRef} className="app-header-right" style={{ position: 'relative' }}>
-          <button onClick={toggle} aria-label="User menu" style={{ width: 36, height: 36, borderRadius: '50%', background: '#2563eb', color: '#ffffff', fontWeight: 700, border: 'none' }}>
-            {label}
+          <button onClick={toggle} aria-label="User menu" style={{ border: 'none', padding: 0, background: 'transparent', borderRadius: '50%', width: 36, height: 36, cursor: 'pointer' }}>
+            <Avatar user={avatarUser as any} size={36} />
           </button>
           {open && (
             <div role="menu" style={{ position: 'absolute', right: 0, marginTop: 8, background: '#fff', border: '1px solid #e5e7eb', boxShadow: '0 8px 20px rgba(0,0,0,0.08)', borderRadius: 8, minWidth: 160, overflow: 'hidden' }}>

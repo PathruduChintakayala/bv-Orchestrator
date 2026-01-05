@@ -1,9 +1,10 @@
 import type React from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../auth'
-import { changeMyPassword, fetchAuthMe, fetchMyProfile, listMySessions, logoutOtherSessions, updateMyProfile } from '../api/me'
+import { changeMyPassword, deleteMyAvatar, fetchAuthMe, fetchMyProfile, listMySessions, logoutOtherSessions, updateMyProfile, uploadMyAvatar } from '../api/me'
 import type { MyProfile, SessionInfo } from '../types/me'
 import { formatDisplayTime } from '../utils/datetime'
+import { Avatar } from '../components/Avatar'
 
 type TabKey = 'account' | 'security'
 
@@ -13,7 +14,7 @@ function tabFromHash(hash: string): TabKey {
 }
 
 export default function MyAccountPage() {
-  const { setAuthenticatedSession, user } = useAuth()
+  const { setAuthenticatedSession, user, refresh } = useAuth()
   const [profile, setProfile] = useState<MyProfile | null>(null)
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [activeTab, setActiveTab] = useState<TabKey>(() => tabFromHash(window.location.hash || '#/me/account'))
@@ -21,6 +22,10 @@ export default function MyAccountPage() {
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
   const [savingSessions, setSavingSessions] = useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [removingAvatar, setRemovingAvatar] = useState(false)
+  const [avatarError, setAvatarError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [displayName, setDisplayName] = useState('')
   const [timezonePref, setTimezonePref] = useState('')
@@ -116,6 +121,56 @@ export default function MyAccountPage() {
     }
   }
 
+  function persistProfileLocally(p: MyProfile) {
+    try {
+      localStorage.setItem('currentUser', JSON.stringify({
+        id: p.id,
+        username: p.username,
+        display_name: p.displayName,
+        full_name: p.displayName,
+        avatar_url: p.avatarUrl,
+        avatarUrl: p.avatarUrl,
+      }))
+      if (p.username) localStorage.setItem('username', p.username)
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleAvatarSelect(file: File | null | undefined) {
+    if (!file) return
+    setAvatarError('')
+    const typeOk = ['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)
+    if (!typeOk) { setAvatarError('Only PNG or JPG images are supported'); return }
+    if (file.size > 2 * 1024 * 1024) { setAvatarError('Max file size is 2MB'); return }
+    try {
+      setUploadingAvatar(true)
+      const updated = await uploadMyAvatar(file)
+      setProfile(updated)
+      persistProfileLocally(updated)
+      await refresh()
+    } catch (e: any) {
+      setAvatarError(e?.message || 'Upload failed')
+    } finally {
+      setUploadingAvatar(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function handleAvatarRemove() {
+    try {
+      setRemovingAvatar(true)
+      const updated = await deleteMyAvatar()
+      setProfile(updated)
+      persistProfileLocally(updated)
+      await refresh()
+    } catch (e: any) {
+      setAvatarError(e?.message || 'Remove failed')
+    } finally {
+      setRemovingAvatar(false)
+    }
+  }
+
   const headerName = useMemo(() => {
     if (profile?.displayName) return profile.displayName
     if (user?.full_name) return user.full_name
@@ -141,6 +196,25 @@ export default function MyAccountPage() {
 
         {activeTab === 'account' ? (
           <div className="surface-card" style={{ padding: 16, display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>Profile Picture</div>
+                  <div style={{ color: '#6b7280', fontSize: 12 }}>PNG or JPG, max 2MB.</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <Avatar user={{ id: profile.id, username: profile.username, display_name: profile.displayName, full_name: profile.displayName, avatar_url: profile.avatarUrl || null }} size={56} />
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button onClick={() => fileInputRef.current?.click()} disabled={uploadingAvatar} style={secondaryBtn}>{uploadingAvatar ? 'Uploading...' : 'Upload picture'}</button>
+                    {profile.avatarUrl ? (
+                      <button onClick={handleAvatarRemove} disabled={removingAvatar} style={dangerBtn}>{removingAvatar ? 'Removing...' : 'Remove picture'}</button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <input ref={fileInputRef} type="file" accept="image/png,image/jpeg" style={{ display: 'none' }} onChange={e => handleAvatarSelect(e.target.files?.[0])} />
+              {avatarError && <div style={{ color: '#b91c1c', fontSize: 13 }}>{avatarError}</div>}
+            </div>
             <div style={{ display: 'grid', gap: 8 }}>
               <label style={labelStyle}>Display name</label>
               <input value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="How should we show your name?" style={inputStyle} />

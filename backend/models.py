@@ -30,6 +30,8 @@ class User(SQLModel, table=True):
     organization: Optional[str] = None
     role: Optional[str] = None
     preferences_json: Optional[str] = None
+    avatar_url: Optional[str] = None
+    avatar_updated_at: Optional[datetime] = Field(default=None, index=True)
 
 class Process(SQLModel, table=True):
     __tablename__ = "processes"
