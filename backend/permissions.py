@@ -18,6 +18,7 @@ ARTIFACTS = [
     "robots",
     "queues",
     "queue_items",
+    "credential_stores",
     "users",
     "roles",
     "audit",

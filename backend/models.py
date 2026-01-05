@@ -12,6 +12,28 @@ class TriggerType(str, Enum):
     TIME = "TIME"
     QUEUE = "QUEUE"
 
+
+class CredentialStoreType(str, Enum):
+    INTERNAL_DB = "INTERNAL_DB"
+    AZURE_KEY_VAULT = "AZURE_KEY_VAULT"
+    CYBERARK = "CYBERARK"
+    AWS_SECRETS_MANAGER = "AWS_SECRETS_MANAGER"
+    HASHICORP_VAULT = "HASHICORP_VAULT"
+
+
+class CredentialStore(SQLModel, table=True):
+    __tablename__ = "credential_store"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)
+    type: CredentialStoreType = Field(index=True)
+    is_default: bool = Field(default=False, index=True)
+    is_active: bool = Field(default=True, index=True)
+    description: Optional[str] = None
+    config: Optional[str] = None  # encrypted JSON
+    created_at: str
+    updated_at: str
+
+
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True)
@@ -147,6 +169,7 @@ class Asset(SQLModel, table=True):
     type: str  # "text" | "int" | "bool" | "secret" | "credential"
     value: str
     is_secret: bool = False
+    credential_store_id: Optional[int] = Field(default=None, foreign_key="credential_store.id", index=True)
     description: Optional[str] = None
     created_at: str
     updated_at: str

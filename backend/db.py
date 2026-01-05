@@ -39,7 +39,7 @@ def init_db():
     from backend.models import (
         User, Robot, Machine, Process, Job, JobExecutionLog,
         Asset, Package, Queue, QueueItem, Role, RolePermission,
-        UserRole, AuditEvent, Setting, SdkAuthSession, Trigger
+        UserRole, AuditEvent, Setting, SdkAuthSession, Trigger, CredentialStore
     )  # noqa: F401
     
     if DATABASE_URL.startswith("sqlite"):

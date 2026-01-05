@@ -28,6 +28,7 @@ import LogsPage from './pages/LogsPage'
 import AutomationsLayout from './components/AutomationsLayout'
 import InviteAcceptPage from './pages/InviteAcceptPage'
 import MyAccountPage from './pages/MyAccountPage'
+import CredentialStoresPage from './pages/CredentialStoresPage'
 
 function normalizeHash(h: string | null): string {
   const raw = (h || '#/').trim()
@@ -64,6 +65,7 @@ const PROTECTED_ROUTE_PREFIXES = [
   '#/access/users',
   '#/access/invites',
   '#/audit',
+  '#/credential-stores',
   '#/logs',
   '#/settings',
   '#/queues',
@@ -192,6 +194,7 @@ function Router() {
     if (route.startsWith('#/jobs')) return renderProtected(<JobsPage />)
     if (route === '#/manage-access' || route.startsWith('#/access/users') || route.startsWith('#/access/invites')) return renderProtected(<ManageAccessPage />)
     if (route === '#/audit') return renderProtected(<AuditPage />)
+    if (route === '#/credential-stores') return renderProtected(<CredentialStoresPage />)
     if (route.startsWith('#/automations/processes')) return renderProtected(<AutomationsLayout active="processes"><ProcessesPage /></AutomationsLayout>)
     if (route.startsWith('#/automations/jobs')) return renderProtected(<AutomationsLayout active="jobs"><JobsPage /></AutomationsLayout>)
     if (route.startsWith('#/automations/triggers')) return renderProtected(<AutomationsLayout active="triggers"><TriggersPage /></AutomationsLayout>)

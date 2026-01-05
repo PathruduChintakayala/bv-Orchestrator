@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from sqlmodel import Session, select
-from backend.models import Asset
+from backend.models import Asset, CredentialStore
 from backend.repositories.asset_repository import AssetRepository
 from backend.encryption import encrypt_value, decrypt_value
 from backend.audit_utils import log_event, diff_dicts
@@ -16,6 +16,20 @@ class AssetService:
     def __init__(self, session: Session):
         self.session = session
         self.repo = AssetRepository(session)
+
+    def _get_default_store_id(self) -> Optional[int]:
+        store = self.session.exec(select(CredentialStore).where(CredentialStore.is_default == True)).first()
+        return store.id if store else None
+
+    def _resolve_store_id(self, store_id: Optional[int]) -> Optional[int]:
+        if store_id is None:
+            return self._get_default_store_id()
+        store = self.session.get(CredentialStore, store_id)
+        if not store:
+            raise ValueError("Credential store not found")
+        if not store.is_active and store.is_default:
+            raise ValueError("Default credential store is inactive")
+        return store.id
 
     def list_assets(self, search: Optional[str] = None) -> List[Dict[str, Any]]:
         assets = self.repo.get_all()
@@ -61,6 +75,7 @@ class AssetService:
         
         before_out = self.asset_to_out(a)
         cur_type = self._normalize_asset_type(a.type)
+        new_store_id: Optional[int] = a.credential_store_id
 
         if cur_type in {"text", "int", "bool"}:
             if "value" in payload and payload["value"] is not None:
@@ -70,6 +85,7 @@ class AssetService:
                 val = str(payload["value"]).strip()
                 # If is_raw is True, we assume it's already encrypted
                 a.value = val if is_raw else encrypt_value(val)
+            new_store_id = self._resolve_store_id(payload.get("credential_store_id")) if "credential_store_id" in payload or a.credential_store_id is None else a.credential_store_id
         elif cur_type == "credential":
             current = {}
             try:
@@ -88,10 +104,16 @@ class AssetService:
                 "username": current.get("username", ""),
                 "password": current.get("password", "")
             })
+            new_store_id = self._resolve_store_id(payload.get("credential_store_id")) if "credential_store_id" in payload or a.credential_store_id is None else a.credential_store_id
 
         if "description" in payload:
             a.description = payload.get("description") or None
         
+        if cur_type in {"secret", "credential"}:
+            a.credential_store_id = new_store_id or self._get_default_store_id()
+        else:
+            a.credential_store_id = None
+
         a.updated_at = now_iso()
         self.repo.update(a)
         after_out = self.asset_to_out(a)
@@ -132,6 +154,7 @@ class AssetService:
         asset_type = self._normalize_asset_type(payload.get("type") or "text")
         stored_value = ""
         is_secret = False
+        credential_store_id: Optional[int] = None
 
         if asset_type in {"text", "int", "bool"}:
             value = (payload.get("value") or "").strip()
@@ -145,6 +168,7 @@ class AssetService:
                 raise ValueError("Value is required for secret")
             stored_value = encrypt_value(value)
             is_secret = True
+            credential_store_id = self._resolve_store_id(payload.get("credential_store_id"))
         elif asset_type == "credential":
             username = (payload.get("username") or "").strip()
             password = (payload.get("password") or "").strip()
@@ -155,12 +179,14 @@ class AssetService:
                 "password": encrypt_value(password)
             })
             is_secret = True
+            credential_store_id = self._resolve_store_id(payload.get("credential_store_id"))
 
         a = Asset(
             name=name,
             type=asset_type,
             value=stored_value,
             is_secret=is_secret,
+            credential_store_id=credential_store_id,
             description=payload.get("description") or None,
             created_at=now_iso(),
             updated_at=now_iso(),
@@ -190,14 +216,20 @@ class AssetService:
             a.type = self._normalize_asset_type(str(payload["type"]))
 
         cur_type = self._normalize_asset_type(a.type)
+        new_store_id: Optional[int] = a.credential_store_id
+        if "credential_store_id" in payload:
+            new_store_id = self._resolve_store_id(payload.get("credential_store_id"))
+
         if cur_type in {"text", "int", "bool"}:
             if "value" in payload and payload["value"] is not None:
                 a.value = str(payload["value"]).strip()
             a.is_secret = False
+            new_store_id = None
         elif cur_type == "secret":
             if "value" in payload and payload["value"]:
                 a.value = encrypt_value(str(payload["value"]).strip())
             a.is_secret = True
+            new_store_id = self._resolve_store_id(payload.get("credential_store_id")) if "credential_store_id" in payload or a.credential_store_id is None else a.credential_store_id
         elif cur_type == "credential":
             current = {}
             try:
@@ -215,9 +247,15 @@ class AssetService:
                 "password": current.get("password", current.get("password_hash", "")) # migration path
             })
             a.is_secret = True
+            new_store_id = self._resolve_store_id(payload.get("credential_store_id")) if "credential_store_id" in payload or a.credential_store_id is None else a.credential_store_id
 
         if "description" in payload:
             a.description = payload.get("description") or None
+
+        if cur_type in {"secret", "credential"}:
+            a.credential_store_id = new_store_id or self._get_default_store_id()
+        else:
+            a.credential_store_id = None
         
         a.updated_at = now_iso()
         self.repo.update(a)
@@ -274,6 +312,7 @@ class AssetService:
             "value": value_out,
             "username": username_out,
             "is_secret": a.is_secret,
+            "credential_store_id": a.credential_store_id,
             "description": a.description,
             "created_at": a.created_at,
             "updated_at": a.updated_at,

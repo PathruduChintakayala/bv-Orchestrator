@@ -69,6 +69,7 @@ function Header() {
     { label: 'Assets', href: '#/assets', match: (h: string) => h.startsWith('#/assets') },
     { label: 'Manage Access', href: '#/access/users', match: (h: string) => h.startsWith('#/access') || h.startsWith('#/manage-access') },
     { href: '#/audit', label: 'Audit', perm: { artifact: 'audit', op: 'view' } },
+    { href: '#/credential-stores', label: 'Credential Stores', perm: { artifact: 'credential_stores', op: 'view' } },
     { href: '#/settings', label: 'Settings', perm: { artifact: 'settings', op: 'view' } },
   ]), []);
 

@@ -28,6 +28,8 @@ from backend.sdk_auth import router as sdk_auth_router
 from backend.job_execution_logs import router as job_execution_logs_router
 from backend.logs import router as logs_router
 from backend.me import router as me_router
+from backend.credential_stores import router as credential_stores_router
+from backend.services.credential_store_service import CredentialStoreService
 from backend.trigger_scheduler import scheduler
 from backend.models import User
 from backend.auth import SECRET_KEY, ALGORITHM
@@ -106,6 +108,7 @@ def on_startup():
     with Session(engine) as session:
         ensure_admin_user(session)
         ensure_default_roles(session)
+        CredentialStoreService(session).ensure_default_store()
     scheduler.start()
     heartbeat_monitor.start()
 
@@ -136,3 +139,4 @@ app.include_router(sdk_auth_router, prefix="/api")
 app.include_router(job_execution_logs_router, prefix="/api")
 app.include_router(logs_router, prefix="/api")
 app.include_router(me_router, prefix="/api")
+app.include_router(credential_stores_router, prefix="/api")

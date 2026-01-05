@@ -118,7 +118,6 @@ export default function SettingsPage() {
         <div className="surface-card" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <h1 className="page-title" style={{ margin: 0 }}>Settings</h1>
-            <p style={{ margin: 0, color: '#6b7280' }}>Display preferences and notification channels.</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button className="btn btn-ghost" onClick={handleSave} disabled={saving || loading}>💾 Save</button>
@@ -130,7 +129,6 @@ export default function SettingsPage() {
             <button onClick={() => setCollapsedGeneral(c => !c)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}>
               <div>
                 <h2 style={{ marginTop: 0, marginBottom: 2, fontSize: 16, textAlign: 'left' }}>General</h2>
-                <p style={{ color: '#374151', fontSize: 14, marginTop: 0, textAlign: 'left' }}>Controls how timestamps are rendered in the UI. Storage and scheduling remain UTC.</p>
               </div>
               <span aria-hidden style={{ transform: collapsedGeneral ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', fontSize: 18, lineHeight: 1 }}>⌄</span>
             </button>
@@ -153,7 +151,6 @@ export default function SettingsPage() {
             <button onClick={() => setCollapsedEmail(c => !c)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}>
               <div>
                 <h2 style={{ marginTop: 0, marginBottom: 2, fontSize: 16, textAlign: 'left' }}>Email / Notifications</h2>
-                <p style={{ color: '#374151', fontSize: 14, marginTop: 0, textAlign: 'left' }}>SMTP alerts are off by default. Configure and enable to receive failure notifications.</p>
               </div>
               <span aria-hidden style={{ transform: collapsedEmail ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', fontSize: 18, lineHeight: 1 }}>⌄</span>
             </button>
