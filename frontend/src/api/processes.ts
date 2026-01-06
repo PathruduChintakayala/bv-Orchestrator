@@ -39,10 +39,9 @@ async function readError(res: Response): Promise<string> {
   return text;
 }
 
-export async function fetchProcesses(params?: { search?: string; activeOnly?: boolean }): Promise<Process[]> {
+export async function fetchProcesses(params?: { search?: string }): Promise<Process[]> {
   const qs = new URLSearchParams();
   if (params?.search) qs.set("search", params.search);
-  if (params?.activeOnly) qs.set("active_only", "true");
   const res = await fetch(`/api/processes/${qs.toString() ? `?${qs.toString()}` : ""}`, { headers: authHeaders() });
   if (!res.ok) throw new Error(await readError(res));
   return toCamel(await res.json()) as Process[];
@@ -60,7 +59,6 @@ export async function createProcess(payload: {
   packageId?: number;
   scriptPath?: string;
   entrypointName?: string;
-  isActive: boolean;
 }): Promise<Process> {
   const res = await fetch(`/api/processes/`, {
     method: "POST",
@@ -73,7 +71,7 @@ export async function createProcess(payload: {
 
 export async function updateProcess(
   id: number,
-  payload: Partial<{ name: string; description?: string; packageId?: number; scriptPath?: string; entrypointName?: string; isActive: boolean }>
+  payload: Partial<{ name: string; description?: string; packageId?: number; scriptPath?: string; entrypointName?: string }>
 ): Promise<Process> {
   const res = await fetch(`/api/processes/${id}`, {
     method: "PUT",

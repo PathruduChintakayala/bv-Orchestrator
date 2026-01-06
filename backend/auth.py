@@ -16,6 +16,7 @@ from backend.db import get_session
 from backend.models import User, Role, UserRole, RolePermission, UserInvite, PasswordResetToken, Setting
 from backend.audit_utils import log_event
 from backend.email_service import EmailService
+from backend.email_templates import render_invite_email, render_password_reset_email, resolve_ui_base_url
 from backend.permissions import require_permission
 from backend.timezone_utils import get_display_timezone, to_display_iso
 
@@ -27,8 +28,8 @@ SECRET_KEY = "dev-secret-change-me"  # for demo; move to env
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480
 _BCRYPT_MAX_INPUT_BYTES = 72
-INVITE_TOKEN_TTL_HOURS = 72
-PASSWORD_RESET_TOKEN_TTL_MINUTES = 60
+INVITE_TOKEN_TTL_HOURS = 48
+PASSWORD_RESET_TOKEN_TTL_MINUTES = 30
 
 
 def _prepare_password_input(password: str) -> str:
@@ -354,15 +355,22 @@ def create_invite(
     session.commit()
     session.refresh(invite)
 
-    base_url = payload.get("accept_base_url") or f"{str(request.base_url).rstrip('/')}/#/accept-invite"
-    link = f"{base_url}?token={token}"
-    subject = "You have been invited to BV Orchestrator"
-    body = (
-        "You have been invited to join BV Orchestrator.\n\n"
-        f"Accept your invite: {link}\n"
-        f"This invite expires at {invite.expires_at.isoformat()} UTC.\n"
+    tz = get_display_timezone(session)
+    ui_base_url = payload.get("accept_base_url") or resolve_ui_base_url(session, request)
+    content = render_invite_email(
+        ui_base_url=ui_base_url,
+        token=token,
+        expires_at_display=to_display_iso(invite.expires_at, tz),
+        timezone=tz,
+        expires_in_hours=ttl_hours,
     )
-    EmailService(session).send_email(subject, body, to_addresses=[email], background_tasks=background_tasks)
+    EmailService(session).send_email(
+        subject=content.subject,
+        body=content.text_body,
+        html_body=content.html_body,
+        to_addresses=[email],
+        background_tasks=background_tasks,
+    )
     try:
         log_event(
             session,
@@ -416,18 +424,25 @@ def resend_invite(
     session.commit()
     session.refresh(invite)
 
-    base_url = None
+    tz = get_display_timezone(session)
+    base_url_override = None
     if payload:
-        base_url = payload.get("accept_base_url") or payload.get("acceptBaseUrl")
-    base_url = base_url or f"{str(request.base_url).rstrip('/')}/#/accept-invite"
-    link = f"{base_url}?token={token}"
-    subject = "Your BV Orchestrator invite"
-    body = (
-        "You have been invited to join BV Orchestrator.\n\n"
-        f"Accept your invite: {link}\n"
-        f"This invite expires at {invite.expires_at.isoformat()} UTC.\n"
+        base_url_override = payload.get("accept_base_url") or payload.get("acceptBaseUrl")
+    ui_base_url = base_url_override or resolve_ui_base_url(session, request)
+    content = render_invite_email(
+        ui_base_url=ui_base_url,
+        token=token,
+        expires_at_display=to_display_iso(invite.expires_at, tz),
+        timezone=tz,
+        expires_in_hours=INVITE_TOKEN_TTL_HOURS,
     )
-    EmailService(session).send_email(subject, body, to_addresses=[invite.email], background_tasks=background_tasks)
+    EmailService(session).send_email(
+        subject=content.subject,
+        body=content.text_body,
+        html_body=content.html_body,
+        to_addresses=[invite.email],
+        background_tasks=background_tasks,
+    )
     try:
         log_event(
             session,
@@ -590,15 +605,22 @@ def request_password_reset(
         session.commit()
         session.refresh(prt)
 
-        base_url = payload.get("reset_base_url") or f"{str(request.base_url).rstrip('/')}/#/reset-password"
-        link = f"{base_url}?token={token}"
-        subject = "Reset your BV Orchestrator password"
-        body = (
-            "You requested a password reset. If you did not request this, you can ignore this email.\n\n"
-            f"Reset link: {link}\n"
-            f"This link expires at {expires_at.isoformat()} UTC.\n"
+        tz = get_display_timezone(session)
+        ui_base_url = payload.get("reset_base_url") or resolve_ui_base_url(session, request)
+        content = render_password_reset_email(
+            ui_base_url=ui_base_url,
+            token=token,
+            expires_at_display=to_display_iso(expires_at, tz),
+            timezone=tz,
+            initiated_by_admin=False,
         )
-        EmailService(session).send_email(subject, body, to_addresses=[user.email], background_tasks=background_tasks)
+        EmailService(session).send_email(
+            subject=content.subject,
+            body=content.text_body,
+            html_body=content.html_body,
+            to_addresses=[user.email],
+            background_tasks=background_tasks,
+        )
         try:
             log_event(
                 session,

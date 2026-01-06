@@ -5,6 +5,8 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional, List
 
+from sqlalchemy import update, and_, or_
+
 from croniter import croniter
 from sqlmodel import Session, select
 
@@ -111,6 +113,7 @@ class TriggerScheduler:
         self._stopped = False
         self._lock_key = "trigger_scheduler_lock"
         self._lock_timeout = interval_seconds + 5
+        self._visibility_timeout_seconds = 300
 
     def start(self):
         if self._task and not self._task.done():
@@ -195,30 +198,80 @@ class TriggerScheduler:
                     continue
                 batch_size = int(t.batch_size or 1)
                 try:
-                    items = (
-                        session.exec(
-                            select(QueueItem)
-                            .where(QueueItem.queue_id == t.queue_id)
-                            .where(QueueItem.status.in_(["NEW", "new"]))
-                            .order_by(QueueItem.id)
-                            .limit(batch_size)
-                        ).all()
+                    # Abandon long-stuck items before attempting to claim.
+                    abandon_cutoff = iso(now - timedelta(hours=24))
+                    session.exec(
+                        update(QueueItem)
+                        .where(
+                            QueueItem.queue_id == t.queue_id,
+                            QueueItem.status == "IN_PROGRESS",
+                            QueueItem.locked_at.isnot(None),
+                            QueueItem.locked_at < abandon_cutoff,
+                        )
+                        .values(
+                            status="ABANDONED",
+                            error_reason="Lease expired after 24 hours",
+                            locked_by_robot_id=None,
+                            locked_at=None,
+                            updated_at=iso(now),
+                        )
                     )
-                    if not items:
+                    session.commit()
+
+                    cutoff = iso(now - timedelta(seconds=self._visibility_timeout_seconds))
+
+                    # Lease-aware atomic claim: UPDATE ... WHERE ... RETURNING
+                    subq = (
+                        select(QueueItem.id)
+                        .where(
+                            QueueItem.queue_id == t.queue_id,
+                            or_(
+                                QueueItem.status.in_(["NEW", "new"]),
+                                and_(
+                                    QueueItem.status == "IN_PROGRESS",
+                                    QueueItem.locked_at.isnot(None),
+                                    QueueItem.locked_at < cutoff,
+                                ),
+                            ),
+                        )
+                        # Align ordering with runtime dequeue: priority DESC, created_at ASC
+                        .order_by(QueueItem.priority.desc(), QueueItem.created_at.asc())
+                        .limit(batch_size)
+                        .scalar_subquery()
+                    )
+
+                    stmt = (
+                        update(QueueItem)
+                        .where(QueueItem.id.in_(select(subq)))
+                        .values(
+                            status="IN_PROGRESS",
+                            locked_at=iso(now),
+                            updated_at=iso(now),
+                        )
+                        .returning(QueueItem)
+                    )
+
+                    claimed_rows = session.exec(stmt).all()
+                    if not claimed_rows:
                         t.last_fired_at = iso(now)
                         t.next_fire_at = iso(_next_poll(now, interval))
                         session.add(t)
                         session.commit()
                         session.refresh(t)
                         continue
-                    for qi in items:
-                        qi.status = "IN_PROGRESS"
-                        qi.updated_at = iso(now)
-                        session.add(qi)
-                    session.flush()
-                    claimed_ids = [qi.id for qi in items]
+
+                    # Normalize returning rows to QueueItem objects.
+                    claimed_items: List[QueueItem] = []
+                    for row in claimed_rows:
+                        if isinstance(row, QueueItem):
+                            claimed_items.append(row)
+                        else:
+                            mapping = row._mapping if hasattr(row, "_mapping") else row
+                            claimed_items.append(QueueItem(**dict(mapping)))
+
+                    claimed_ids = [qi.id for qi in claimed_items]
                     job = _create_job_for_trigger(session, t, queue_item_ids=claimed_ids)
-                    for qi in items:
+                    for qi in claimed_items:
                         qi.job_id = job.id
                         qi.updated_at = iso(now)
                         session.add(qi)

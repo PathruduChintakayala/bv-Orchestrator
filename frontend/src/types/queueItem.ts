@@ -2,6 +2,17 @@ import type { Queue } from './queue'
 
 export type QueueItemStatus = 'new' | 'in_progress' | 'completed' | 'failed' | 'deleted'
 
+export const queueItemPriorityLabels: Record<number, string> = {
+  0: 'Low',
+  1: 'Normal',
+  2: 'Medium',
+  3: 'High'
+}
+
+export function formatQueueItemPriority(priority: number): string {
+  return queueItemPriorityLabels[priority] ?? `Priority ${priority}`
+}
+
 export interface QueueItem {
   id: string
   queueId: number

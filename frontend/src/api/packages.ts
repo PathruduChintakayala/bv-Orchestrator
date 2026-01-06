@@ -41,11 +41,12 @@ export async function uploadPackage(file: File): Promise<Package> {
   return toCamel(await res.json()) as Package;
 }
 
-export async function fetchPackages(params?: { search?: string; activeOnly?: boolean; name?: string }): Promise<Package[]> {
+export async function fetchPackages(params?: { search?: string; activeOnly?: boolean; name?: string; type?: "rpa" | "agent" }): Promise<Package[]> {
   const qs = new URLSearchParams();
   if (params?.search) qs.set("search", params.search);
   if (params?.activeOnly) qs.set("active_only", "true");
   if (params?.name) qs.set("name", params.name);
+  if (params?.type) qs.set("type", params.type);
   const res = await fetch(`/api/packages/${qs.toString() ? `?${qs.toString()}` : ""}`, { headers: authHeaders() });
   if (!res.ok) throw new Error(await readError(res));
   return toCamel(await res.json()) as Package[];

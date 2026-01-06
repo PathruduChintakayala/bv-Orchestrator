@@ -7,6 +7,8 @@ export interface Job {
   id: number;
   executionId?: string | null;
   processId: number;
+  controlSignal?: "STOP" | "KILL" | null;
+  type?: 'rpa' | 'agent' | string | null;
   packageId?: number | null;
   packageName?: string | null;
   packageVersion?: string | null;

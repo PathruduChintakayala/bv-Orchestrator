@@ -29,6 +29,9 @@ from backend.job_execution_logs import router as job_execution_logs_router
 from backend.logs import router as logs_router
 from backend.me import router as me_router
 from backend.credential_stores import router as credential_stores_router
+from backend.runtime_secrets import router as runtime_secrets_router
+from backend.runtime_credentials import router as runtime_credentials_router
+from backend.runtime_jobs import router as runtime_jobs_router
 from backend.services.credential_store_service import CredentialStoreService
 from backend.trigger_scheduler import scheduler
 from backend.models import User
@@ -86,6 +89,8 @@ async def sdk_token_guard(request, call_next):
                     or (method == "POST" and path.startswith("/api/job-executions/") and path.endswith("/logs"))
                     or (method == "POST" and path == "/api/packages/preflight")
                     or (method == "POST" and path == "/api/packages/upload")
+                    or (method == "POST" and path == "/api/runtime/secrets/resolve")
+                    or (method == "GET" and path.startswith("/api/runtime/credentials/"))
                 )
                 if not allowed:
                     return JSONResponse(
@@ -140,3 +145,6 @@ app.include_router(job_execution_logs_router, prefix="/api")
 app.include_router(logs_router, prefix="/api")
 app.include_router(me_router, prefix="/api")
 app.include_router(credential_stores_router, prefix="/api")
+app.include_router(runtime_secrets_router, prefix="/api")
+app.include_router(runtime_credentials_router, prefix="/api")
+app.include_router(runtime_jobs_router, prefix="/api")

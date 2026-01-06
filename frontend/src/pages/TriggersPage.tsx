@@ -46,7 +46,7 @@ export default function TriggersPage() {
       setLoading(true); setError(null)
       const [ts, ps, qs, rs] = await Promise.all([
         fetchTriggers(),
-        fetchProcesses({ activeOnly: false }),
+        fetchProcesses(),
         fetchQueues({ search: "" }),
         fetchRobots(),
       ])

@@ -10,6 +10,7 @@ export default function PackagesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [packageType, setPackageType] = useState<"rpa" | "agent">("rpa");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [versionsModal, setVersionsModal] = useState<string | null>(null); // package name
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -18,13 +19,14 @@ export default function PackagesPage() {
     const token = localStorage.getItem("token");
     if (!token) { window.location.hash = "#/"; return; }
     load();
-  }, []);
+  }, [packageType]);
 
-  async function load(s?: string) {
+  async function load(nextSearch?: string) {
+    const effectiveSearch = typeof nextSearch === "string" ? nextSearch : search;
     try {
       setLoading(true);
       setError(null);
-      const pkgData = await fetchPackages(s ? { search: s } : undefined);
+      const pkgData = await fetchPackages({ search: effectiveSearch || undefined, type: packageType });
       setPackages(pkgData);
     } catch (e: any) {
       setError(e.message || "Failed to load packages");
@@ -63,10 +65,10 @@ export default function PackagesPage() {
     });
     return Object.entries(byName).map(([name, versions]) => {
       const latest = versions.reduce((acc, cur) => new Date(cur.updatedAt) > new Date(acc.updatedAt) ? cur : acc, versions[0]);
-      const isBv = versions.some(v => v.isBvpackage);
+      const pkgType = (versions[0]?.type || "rpa") === "agent" ? "Agent" : "RPA";
       return {
         name,
-        typeLabel: isBv ? "BV Package" : "Legacy ZIP",
+        typeLabel: pkgType,
         totalVersions: versions.length,
         updatedAt: latest.updatedAt,
       };
@@ -184,6 +186,31 @@ export default function PackagesPage() {
             </div>
           </div>
         </header>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setPackageType("rpa")}
+            className="btn"
+            style={{
+              backgroundColor: packageType === "rpa" ? '#2563eb' : '#f3f4f6',
+              color: packageType === "rpa" ? '#fff' : '#111827',
+            }}
+          >
+            RPA
+          </button>
+          <button
+            type="button"
+            onClick={() => setPackageType("agent")}
+            className="btn"
+            style={{
+              backgroundColor: packageType === "agent" ? '#2563eb' : '#f3f4f6',
+              color: packageType === "agent" ? '#fff' : '#111827',
+            }}
+          >
+            Agents
+          </button>
+        </div>
 
         <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
           {loading ? <p>Loading…</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (

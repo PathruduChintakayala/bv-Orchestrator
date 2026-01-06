@@ -33,6 +33,7 @@ class BvPackageInfo:
     version: str
     entrypoints: List[Dict[str, Any]]
     default_entrypoint_name: str
+    process_type: str
 
 
 def _normalize_zip_path(path: str) -> str:
@@ -40,7 +41,10 @@ def _normalize_zip_path(path: str) -> str:
     return (path or "").lstrip("/")
 
 
-def _load_bvproject_yaml(text: str) -> Tuple[str, str, List[BvEntrypoint], str]:
+ALLOWED_PROCESS_TYPES = {"rpa", "agent"}
+
+
+def _load_bvproject_yaml(text: str) -> Tuple[str, str, List[BvEntrypoint], str, str]:
     try:
         data = yaml.safe_load(text) or {}
     except Exception as e:
@@ -55,6 +59,9 @@ def _load_bvproject_yaml(text: str) -> Tuple[str, str, List[BvEntrypoint], str]:
     version = project.get("version")
     entrypoints = project.get("entrypoints")
     entrypoint = project.get("entrypoint")
+    ptype = str(project.get("type") or "rpa").strip().lower()
+    if ptype not in ALLOWED_PROCESS_TYPES:
+        raise BvPackageValidationError("bvproject.yaml: project.type must be one of: rpa, agent")
 
     if not isinstance(name, str) or not name.strip():
         raise BvPackageValidationError("bvproject.yaml: 'name' is required and must be a non-empty string")
@@ -100,7 +107,7 @@ def _load_bvproject_yaml(text: str) -> Tuple[str, str, List[BvEntrypoint], str]:
         if not default_name:
             raise BvPackageValidationError("bvproject.yaml: no default entrypoint found in 'entrypoints'")
         
-        return name, version, parsed, default_name
+        return name, version, parsed, default_name, ptype
     elif entrypoint:
         # Legacy format: entrypoint is a string
         if not isinstance(entrypoint, str) or not entrypoint.strip():
@@ -111,7 +118,7 @@ def _load_bvproject_yaml(text: str) -> Tuple[str, str, List[BvEntrypoint], str]:
 
         # Minimal model: single default entrypoint derived from entrypoint string
         parsed = [BvEntrypoint(name="main", command=entrypoint, default=True)]
-        return name, version, parsed, "main"
+        return name, version, parsed, "main", ptype
     else:
         raise BvPackageValidationError("bvproject.yaml: either 'entrypoint' or 'entrypoints' is required")
 
@@ -162,13 +169,14 @@ def validate_and_extract_bvpackage(zip_path: str) -> BvPackageInfo:
             bvproject_raw = zf.read("bvproject.yaml").decode("utf-8")
         except Exception as e:
             raise BvPackageValidationError(f"Failed to read bvproject.yaml as UTF-8 text: {e}")
-        pkg_name, version, eps, default_name = _load_bvproject_yaml(bvproject_raw)
+        pkg_name, version, eps, default_name, process_type = _load_bvproject_yaml(bvproject_raw)
 
         return BvPackageInfo(
             package_name=pkg_name,
             version=version,
             entrypoints=[{"name": e.name, "command": e.command, "default": bool(e.default)} for e in eps],
             default_entrypoint_name=default_name,
+            process_type=process_type,
         )
 
 

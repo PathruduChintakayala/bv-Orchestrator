@@ -69,7 +69,7 @@ export default function LogsView({ scope, jobExecutionId, jobId, initialProcessI
 
   async function loadMeta() {
     try {
-      const [ps, ms] = await Promise.all([fetchProcesses({ activeOnly: false }), fetchMachines()])
+      const [ps, ms] = await Promise.all([fetchProcesses(), fetchMachines()])
       setProcesses(ps)
       setMachines(ms)
     } catch (e: any) {

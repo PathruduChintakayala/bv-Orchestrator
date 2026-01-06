@@ -26,7 +26,8 @@ def _robot_count(session: Session, machine_id: int) -> int:
 
 def _to_out(m: Machine, session: Session) -> dict:
     return {
-        "id": m.id,
+        "id": getattr(m, "external_id", None) or str(m.id),
+        "_internal_id": m.id,  # deprecated: prefer id (external_id)
         "name": m.name,
         "mode": m.mode,
         "status": m.status,
@@ -38,6 +39,19 @@ def _to_out(m: Machine, session: Session) -> dict:
     }
 
 
+def _get_machine_by_external_id(session: Session, external_id: str) -> Machine:
+    """Resolve machine by external_id (public GUID). Numeric IDs are rejected for management routes."""
+    try:
+        int(external_id)
+        raise HTTPException(status_code=400, detail="Machine identifiers must be external_id (GUID)")
+    except ValueError:
+        pass
+    m = session.exec(select(Machine).where(Machine.external_id == external_id)).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Machine not found")
+    return m
+
+
 @router.get("", dependencies=[Depends(get_current_user), Depends(require_permission("machines", "view"))])
 def list_machines(session: Session = Depends(get_session)):
     rows = session.exec(select(Machine)).all()
@@ -45,11 +59,9 @@ def list_machines(session: Session = Depends(get_session)):
     return [_to_out(m, session) for m in rows]
 
 
-@router.get("/{machine_id}", dependencies=[Depends(get_current_user), Depends(require_permission("machines", "view"))])
-def get_machine(machine_id: int, session: Session = Depends(get_session)):
-    m = session.exec(select(Machine).where(Machine.id == machine_id)).first()
-    if not m:
-        raise HTTPException(status_code=404, detail="Machine not found")
+@router.get("/{machine_external_id}", dependencies=[Depends(get_current_user), Depends(require_permission("machines", "view"))])
+def get_machine(machine_external_id: str, session: Session = Depends(get_session)):
+    m = _get_machine_by_external_id(session, machine_external_id)
     return _to_out(m, session)
 
 
@@ -96,13 +108,11 @@ def create_machine(payload: dict, request: Request, session: Session = Depends(g
     return out
 
 
-@router.delete("/{machine_id}", status_code=204, dependencies=[Depends(get_current_user), Depends(require_permission("machines", "delete"))])
-def delete_machine(machine_id: int, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
-    m = session.exec(select(Machine).where(Machine.id == machine_id)).first()
-    if not m:
-        raise HTTPException(status_code=404, detail="Machine not found")
+@router.delete("/{machine_external_id}", status_code=204, dependencies=[Depends(get_current_user), Depends(require_permission("machines", "delete"))])
+def delete_machine(machine_external_id: str, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
+    m = _get_machine_by_external_id(session, machine_external_id)
 
-    count = _robot_count(session, machine_id)
+    count = _robot_count(session, m.id)
     if count > 0:
         raise HTTPException(status_code=400, detail="Machine cannot be deleted while robots exist")
 
@@ -111,18 +121,16 @@ def delete_machine(machine_id: int, request: Request, session: Session = Depends
     session.commit()
 
     try:
-        log_event(session, action="machine.delete", entity_type="machine", entity_id=machine_id, entity_name=before.get("name"), before=before, after=None, metadata=None, request=request, user=user)
+        log_event(session, action="machine.delete", entity_type="machine", entity_id=m.id, entity_name=before.get("name"), before=before, after=None, metadata=None, request=request, user=user)
     except Exception:
         pass
 
     return None
 
 
-@router.post("/{machine_id}/regenerate-key", dependencies=[Depends(get_current_user), Depends(require_permission("machines", "update"))])
-def regenerate_machine_key(machine_id: int, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
-    m = session.exec(select(Machine).where(Machine.id == machine_id)).first()
-    if not m:
-        raise HTTPException(status_code=404, detail="Machine not found")
+@router.post("/{machine_external_id}/regenerate-key", dependencies=[Depends(get_current_user), Depends(require_permission("machines", "update"))])
+def regenerate_machine_key(machine_external_id: str, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
+    m = _get_machine_by_external_id(session, machine_external_id)
     if m.mode != "runner":
         raise HTTPException(status_code=400, detail="Only runner machines have keys")
 

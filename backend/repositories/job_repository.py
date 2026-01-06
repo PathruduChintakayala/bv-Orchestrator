@@ -7,6 +7,9 @@ class JobRepository(BaseRepository[Job]):
     def __init__(self, session):
         super().__init__(Job, session)
 
+    def get_by_external_id(self, external_id: str) -> Optional[Job]:
+        return self.session.exec(select(Job).where(Job.external_id == external_id)).first()
+
     def get_by_execution_id(self, execution_id: str) -> Optional[Job]:
         return self.session.exec(select(Job).where(Job.execution_id == execution_id)).first()
 

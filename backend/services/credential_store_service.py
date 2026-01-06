@@ -131,7 +131,8 @@ class CredentialStoreService:
     def _to_out(self, store: CredentialStore) -> Dict[str, Any]:
         status = "Coming soon" if store.type != CredentialStoreType.INTERNAL_DB else ("Active" if store.is_active else "Inactive")
         return {
-            "id": store.id,
+            "id": getattr(store, "external_id", None) or str(store.id),
+            "_internal_id": store.id,  # deprecated: prefer id (external_id)
             "name": store.name,
             "type": store.type,
             "is_default": store.is_default,

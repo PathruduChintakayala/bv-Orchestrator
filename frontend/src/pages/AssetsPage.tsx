@@ -361,6 +361,15 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
     credPass: '',
   });
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<{ value?: string }>({});
+
+  function validateValue(next: string, type: AssetType): string | undefined {
+    if (type === 'int') {
+      if (!next.trim()) return 'Value is required';
+      if (!/^-?\d+$/.test(next.trim())) return 'Value must be a whole number';
+    }
+    return undefined;
+  }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     const { name, value } = e.target as any;
@@ -370,6 +379,10 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
         next.value = '';
         next.credUser = '';
         next.credPass = '';
+        setErrors({});
+      } else if (name === 'value') {
+        const err = validateValue(value, next.type);
+        setErrors(prevErr => ({ ...prevErr, value: err }));
       }
       return next;
     });
@@ -378,6 +391,8 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
   async function submit() {
     if (!form.name.trim()) { alert('Name is required'); return; }
     if (!form.type) { alert('Type is required'); return; }
+    const valueError = validateValue(form.value, form.type);
+    if (valueError) { setErrors(prev => ({ ...prev, value: valueError })); return; }
     if (form.type === 'credential') {
       if (!(form.credUser || '').trim()) { alert('Username is required'); return; }
       // Require password both on create and edit for credentials
@@ -448,7 +463,15 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
           ) : (
             <label className="modal-field">
               <div style={label}>{form.type === 'secret' ? 'Secret value' : 'Value'}</div>
-              <input name="value" value={form.value} onChange={handleChange} style={input} type={form.type === 'secret' ? 'password' : 'text'} />
+              <input
+                name="value"
+                value={form.value}
+                onChange={handleChange}
+                style={{ ...input, borderColor: errors.value ? '#dc2626' : '#e5e7eb' }}
+                type={form.type === 'secret' ? 'password' : form.type === 'int' ? 'number' : 'text'}
+                step={form.type === 'int' ? 1 : undefined}
+              />
+              {errors.value && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 4 }}>{errors.value}</div>}
             </label>
           )}
           {/* isSecret checkbox removed for all types as requested */}
@@ -459,7 +482,7 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
-          <button onClick={submit} disabled={saving} style={primaryBtn}>{saving ? 'Saving…' : 'Save'}</button>
+          <button onClick={submit} disabled={saving || Boolean(errors.value)} style={primaryBtn}>{saving ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
     </div>

@@ -55,15 +55,26 @@ class EmailService:
                 setattr(cfg, suffix, parsed)
         return cfg
 
-    def _build_message(self, cfg: EmailConfig, subject: str, body: str, recipients: Sequence[str]) -> EmailMessage:
+    def _build_message(self, cfg: EmailConfig, subject: str, text_body: str, html_body: Optional[str], recipients: Sequence[str]) -> EmailMessage:
         msg = EmailMessage()
         msg["Subject"] = subject
         msg["From"] = cfg.from_address or ""
         msg["To"] = ", ".join(recipients)
-        msg.set_content(body)
+        msg.set_content(text_body or "")
+        if html_body:
+            msg.add_alternative(html_body, subtype="html")
         return msg
 
-    def send_email(self, subject: str, body: str, to_addresses: Optional[Sequence[Optional[str]]] = None, background_tasks: Optional[object] = None) -> bool:
+    def send_email(
+        self,
+        subject: str,
+        body: Optional[str] = None,
+        to_addresses: Optional[Sequence[Optional[str]]] = None,
+        background_tasks: Optional[object] = None,
+        *,
+        html_body: Optional[str] = None,
+        text_body: Optional[str] = None,
+    ) -> bool:
         cfg = self._load_config()
         if not cfg.enabled:
             backend_logger.info("Email delivery disabled; skip", context="email_service")
@@ -85,7 +96,7 @@ class EmailService:
             return False
 
         port = cfg.smtp_port or (465 if cfg.smtp_use_ssl else 587)
-        message = self._build_message(cfg, subject, body, recipients)
+        message = self._build_message(cfg, subject, text_body or body or "", html_body, recipients)
 
         def _deliver():
             try:

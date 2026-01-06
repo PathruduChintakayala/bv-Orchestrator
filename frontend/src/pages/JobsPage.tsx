@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { Job, JobStatus } from "../types/job";
-import { fetchJobs, createJob, cancelJob } from "../api/jobs";
+import { fetchJobs, createJob, stopJob, killJob } from "../api/jobs";
 import { fetchProcesses } from "../api/processes";
 import { fetchRobots } from "../api/robots";
 import { getProcessTypeLabel, getProcessTypeTone } from "../utils/processTypes";
@@ -15,7 +15,6 @@ export default function JobsPage() {
   const [status, setStatus] = useState<JobStatus | "">("");
   const [processId, setProcessId] = useState<number | undefined>(undefined);
   const [search, setSearch] = useState("");
-  const [runtimeType, setRuntimeType] = useState<string>("");
   const [source, setSource] = useState<string>("");
   const [timeRange, setTimeRange] = useState<string>("24h");
   const [sortBy, setSortBy] = useState<"started" | "ended" | "status" | "process" | "id">("started");
@@ -23,6 +22,8 @@ export default function JobsPage() {
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalDefaultProcessId, setModalDefaultProcessId] = useState<number | undefined>(undefined);
+  const [lockProcessSelection, setLockProcessSelection] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   type FetchState<T> = { status: 'idle' | 'loading' | 'ready' | 'error'; data: T; error?: string };
   const [processesState, setProcessesState] = useState<FetchState<import('../types/processes').Process[]>>({ status: 'idle', data: [] });
@@ -41,25 +42,23 @@ export default function JobsPage() {
   }, []);
 
   useEffect(() => {
-    const pid = hydrateFromHash();
+    const { pid, trigger } = hydrateFromHash();
     load(pid);
     setProcessesState({ status: 'loading', data: [] });
     setRobotsState({ status: 'loading', data: [] });
 
-    fetchProcesses({ activeOnly: true })
+    fetchProcesses()
       .then((data) => setProcessesState({ status: 'ready', data }))
       .catch((e: any) => setProcessesState({ status: 'error', data: [], error: e?.message || 'Failed to load processes' }));
 
     fetchRobots()
       .then((data) => setRobotsState({ status: 'ready', data }))
       .catch((e: any) => setRobotsState({ status: 'error', data: [], error: e?.message || 'Failed to load robots' }));
-    // Open modal if hash includes trigger flag
-    try {
-      const hash = window.location.hash || '#/jobs'
-      const url = new URL(hash.replace('#', ''), 'http://localhost')
-      const trig = url.searchParams.get('trigger')
-      if (trig) setModalOpen(true)
-    } catch { }
+    if (trigger) {
+      setModalDefaultProcessId(pid);
+      setLockProcessSelection(Boolean(pid));
+      setModalOpen(true);
+    }
   }, []);
 
   async function load(nextProcessId: number | undefined = processId) {
@@ -75,20 +74,24 @@ export default function JobsPage() {
     }
   }
 
-  function hydrateFromHash(): number | undefined {
+  function hydrateFromHash(): { pid?: number; trigger: boolean } {
+    let trigger = false;
+    let pid: number | undefined = undefined;
     try {
       const hash = window.location.hash || '#/automations/jobs';
       const url = new URL(hash.replace('#', ''), 'http://localhost');
       const pid = url.searchParams.get('processId');
       const src = url.searchParams.get('source');
+      const trig = url.searchParams.get('trigger');
+      trigger = Boolean(trig);
       if (src) setSource(src);
       if (pid) {
         const num = Number(pid);
         setProcessId(num);
-        return num;
+        return { pid: num, trigger };
       }
     } catch {/* ignore parse errors */ }
-    return undefined;
+    return { pid, trigger };
   }
 
   function toggleSort(key: typeof sortBy) {
@@ -108,8 +111,16 @@ export default function JobsPage() {
     void load(processId);
   }
 
-  function openNew() { setModalOpen(true); }
-  function closeModal() { setModalOpen(false); }
+  function openNew() {
+    setLockProcessSelection(false);
+    setModalDefaultProcessId(processId);
+    setModalOpen(true);
+  }
+  function closeModal() {
+    setModalOpen(false);
+    setModalDefaultProcessId(undefined);
+    setLockProcessSelection(false);
+  }
 
   async function handleTrigger(values: FormValues) {
     try {
@@ -122,12 +133,21 @@ export default function JobsPage() {
     }
   }
 
-  async function handleCancel(id: number) {
+  async function handleStop(id: number) {
     try {
-      await cancelJob(id);
+      await stopJob(id);
       await load();
     } catch (e: any) {
-      alert(e.message || "Cancel failed");
+      alert(e.message || "Stop failed");
+    }
+  }
+
+  async function handleKill(id: number) {
+    try {
+      await killJob(id);
+      await load();
+    } catch (e: any) {
+      alert(e.message || "Kill failed");
     }
   }
 
@@ -145,8 +165,9 @@ export default function JobsPage() {
     return "-";
   }
 
-  function runtimeLabel(j: Job) {
-    return getProcessTypeLabel(j.process?.package?.isBvpackage ?? false)
+  function typeLabel(j: Job) {
+    const t = j.type || j.process?.type
+    return getProcessTypeLabel(t)
   }
 
   function sourceLabel(j: Job) {
@@ -173,7 +194,6 @@ export default function JobsPage() {
 
   function resetFilters() {
     setStatus("");
-    setRuntimeType("");
     setSource("");
     setTimeRange("24h");
     setSearch("");
@@ -186,7 +206,6 @@ export default function JobsPage() {
     const now = Date.now();
     const windowMs = timeRange === "24h" ? 24 * 60 * 60 * 1000 : timeRange === "7d" ? 7 * 24 * 60 * 60 * 1000 : undefined;
     const filtered = raw.filter(j => {
-      if (runtimeType && runtimeLabel(j) !== runtimeType) return false;
       if (source && sourceLabel(j) !== source) return false;
       if (windowMs) {
         const created = new Date(j.createdAt).getTime();
@@ -218,7 +237,7 @@ export default function JobsPage() {
     return j.id;
   }
 
-  const filtered = useMemo(() => applyFiltersAndSort(items), [items, runtimeType, source, search, timeRange, sortBy, sortDir]);
+  const filtered = useMemo(() => applyFiltersAndSort(items), [items, source, search, timeRange, sortBy, sortDir]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount - 1);
   const visible = filtered.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
@@ -258,13 +277,6 @@ export default function JobsPage() {
               {(['pending', 'running', 'completed', 'failed', 'canceled'] as JobStatus[]).map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </label>
-          <label style={label}>Runtime type
-            <select value={runtimeType} onChange={e => { setRuntimeType(e.target.value); setPage(0); }} style={input}>
-              <option value="">All</option>
-              <option value="RPA">RPA</option>
-              <option value="Agent">Agent</option>
-            </select>
-          </label>
           <label style={label}>Source
             <select value={source} onChange={e => { setSource(e.target.value); setPage(0); }} style={input}>
               <option value="">All</option>
@@ -299,7 +311,6 @@ export default function JobsPage() {
                   <th onClick={() => toggleSort('started')} role="button">Started</th>
                   <th onClick={() => toggleSort('ended')} role="button">Ended</th>
                   <th>Duration</th>
-                  <th>Runtime</th>
                   <th>Source</th>
                   <th>Hostname</th>
                   <th className="actions-col">Actions</th>
@@ -312,12 +323,11 @@ export default function JobsPage() {
                     <td>
                       <div className="cell-primary">{j.process?.name || `Process ${j.processId}`}</div>
                     </td>
-                    <td><Badge tone={getProcessTypeTone(j.process?.package?.isBvpackage ?? false)}>{runtimeLabel(j)}</Badge></td>
+                    <td><Badge tone={getProcessTypeTone(j.type || j.process?.type)}>{typeLabel(j)}</Badge></td>
                     <td>{stateBadge(j)}</td>
                     <td className="cell-secondary">{startedLabel(j)}</td>
                     <td className="cell-secondary">{endedLabel(j)}</td>
                     <td>{duration(j)}</td>
-                    <td>{runtimeLabel(j)}</td>
                     <td>{sourceLabel(j)}</td>
                     <td>{hostname(j)}</td>
                     <td className="actions-col">
@@ -326,11 +336,11 @@ export default function JobsPage() {
                         onToggle={() => setMenuOpenId(menuOpenId === j.id ? null : j.id)}
                         onClose={() => setMenuOpenId(null)}
                         actions={[
-                          ...(j.status === 'running' || j.status === 'pending' ? [{ label: "Stop", onClick: () => handleCancel(j.id) }] : []),
+                          ...(j.status === 'running' || j.status === 'pending' ? [{ label: "Stop", onClick: () => { void handleStop(j.id); } }] : []),
                           { label: "Restart", onClick: () => { void handleTrigger({ processId: j.processId, robotId: j.robotId ?? undefined, parameters: null }); } },
                           { label: "View logs for this job", onClick: () => { if (j.executionId) window.location.hash = `#/automations/logs?jobId=${j.id}&executionId=${j.executionId}&processId=${j.processId}`; }, disabled: !j.executionId },
                           { label: "View logs for this process", onClick: () => { window.location.hash = `#/automations/logs?processId=${j.processId}`; } },
-                          { label: "Kill", tone: "danger" as const, onClick: () => { alert('Kill not implemented'); } },
+                          ...(j.status === 'running' || j.status === 'pending' ? [{ label: "Kill", tone: "danger" as const, onClick: () => { if (confirm('Force terminate this job?')) { void handleKill(j.id); } } }] : []),
                         ]}
                       />
                     </td>
@@ -364,7 +374,14 @@ export default function JobsPage() {
         </div>
 
         {modalOpen && (
-          <TriggerModal processesState={processesState} robotsState={robotsState} onCancel={closeModal} onSave={handleTrigger} />
+          <TriggerModal
+            processesState={processesState}
+            robotsState={robotsState}
+            onCancel={closeModal}
+            onSave={handleTrigger}
+            defaultProcessId={modalDefaultProcessId}
+            lockProcess={lockProcessSelection}
+          />
         )}
       </div>
     </div>
@@ -510,10 +527,10 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
 
 type MenuAction = { label: string; onClick: () => void; tone?: "danger"; disabled?: boolean };
 
-function TriggerModal({ processesState, robotsState, onCancel, onSave }: { processesState: { status: 'idle' | 'loading' | 'ready' | 'error'; data: import('../types/processes').Process[]; error?: string }; robotsState: { status: 'idle' | 'loading' | 'ready' | 'error'; data: import('../types/robot').Robot[]; error?: string }; onCancel: () => void; onSave: (v: FormValues) => void }) {
+function TriggerModal({ processesState, robotsState, onCancel, onSave, defaultProcessId, lockProcess }: { processesState: { status: 'idle' | 'loading' | 'ready' | 'error'; data: import('../types/processes').Process[]; error?: string }; robotsState: { status: 'idle' | 'loading' | 'ready' | 'error'; data: import('../types/robot').Robot[]; error?: string }; onCancel: () => void; onSave: (v: FormValues) => void; defaultProcessId?: number; lockProcess?: boolean }) {
   const processes = processesState.data;
   const robots = robotsState.data;
-  const [form, setForm] = useState<FormValues>({ processId: undefined, robotId: undefined });
+  const [form, setForm] = useState<FormValues>({ processId: defaultProcessId, robotId: undefined });
   const [saving, setSaving] = useState(false);
   const currentProcess = useMemo(() => processes.find(p => p.id === form.processId) || null, [processes, form.processId]);
 
@@ -523,7 +540,14 @@ function TriggerModal({ processesState, robotsState, onCancel, onSave }: { proce
     }
   }, [processes, form.processId]);
 
+  useEffect(() => {
+    if (defaultProcessId) {
+      setForm(prev => ({ ...prev, processId: defaultProcessId }));
+    }
+  }, [defaultProcessId]);
+
   function handleProcessChange(val?: number) {
+    if (lockProcess) return;
     setForm(prev => ({ ...prev, processId: val }));
   }
 
@@ -579,8 +603,11 @@ function TriggerModal({ processesState, robotsState, onCancel, onSave }: { proce
                 value={form.processId ? String(form.processId) : undefined}
                 placeholder={processes.length ? 'Select process' : 'No processes'}
                 onChange={(val) => handleProcessChange(val ? Number(val) : undefined)}
-                disabled={processes.length === 0}
+                disabled={lockProcess || processes.length === 0}
               />
+              {lockProcess && (
+                <div style={{ fontSize: 12, color: '#6b7280' }}>Process locked from the originating Processes row.</div>
+              )}
               {currentProcess && (
                 <div style={{ fontSize: 12, color: '#6b7280' }}>
                   {currentProcess.package?.name ? `${currentProcess.package.name} ${currentProcess.package.version || ''}`.trim() : 'Legacy process'}

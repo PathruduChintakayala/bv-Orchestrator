@@ -9,6 +9,8 @@ from backend.models import Role, RolePermission, User, UserRole, PasswordResetTo
 from backend.audit_utils import log_event, diff_dicts
 from backend.permissions import require_permission, ARTIFACTS
 from backend.email_service import EmailService
+from backend.email_templates import render_password_reset_email, resolve_ui_base_url
+from backend.timezone_utils import get_display_timezone, to_display_iso
 from backend.auth import PASSWORD_RESET_TOKEN_TTL_MINUTES
 
 PERMISSIONS = ["view", "create", "edit", "delete"]
@@ -20,10 +22,37 @@ def utcnow_iso() -> str:
     return datetime.utcnow().isoformat()
 
 
+def _get_role_by_external_id(session: Session, external_id: str) -> Role:
+    """Resolve role by external_id (public GUID). Numeric IDs are rejected for management routes."""
+    try:
+        int(external_id)
+        raise HTTPException(status_code=400, detail="Role identifiers must be external_id (GUID)")
+    except ValueError:
+        pass
+    role = session.exec(select(Role).where(Role.external_id == external_id)).first()
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+    return role
+
+
+def _get_user_by_external_id(session: Session, external_id: str) -> User:
+    """Resolve user by external_id (public GUID). Numeric IDs are rejected for management routes."""
+    try:
+        int(external_id)
+        raise HTTPException(status_code=400, detail="User identifiers must be external_id (GUID)")
+    except ValueError:
+        pass
+    user = session.exec(select(User).where(User.external_id == external_id)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
 def _role_to_dict(session: Session, role: Role) -> Dict:
     perms = session.exec(select(RolePermission).where(RolePermission.role_id == role.id)).all()
     return {
-        "id": role.id,
+        "id": getattr(role, "external_id", None) or str(role.id),
+        "_internal_id": role.id,  # deprecated: prefer id (external_id)
         "name": role.name,
         "description": role.description,
         "created_at": role.created_at,
@@ -104,11 +133,9 @@ def list_roles(session: Session = Depends(get_session), user=Depends(get_current
     return [_role_to_dict(session, r) for r in roles]
 
 
-@router.get("/roles/{role_id}", response_model=dict, dependencies=[Depends(require_permission("roles", "view"))])
-def get_role(role_id: int, session: Session = Depends(get_session), user=Depends(get_current_user)):
-    role = session.get(Role, role_id)
-    if not role:
-        raise HTTPException(status_code=404, detail="Role not found")
+@router.get("/roles/{role_external_id}", response_model=dict, dependencies=[Depends(require_permission("roles", "view"))])
+def get_role(role_external_id: str, session: Session = Depends(get_session), user=Depends(get_current_user)):
+    role = _get_role_by_external_id(session, role_external_id)
     return _role_to_dict(session, role)
 
 
@@ -150,17 +177,15 @@ def create_role(payload: dict, request: Request, session: Session = Depends(get_
     return out
 
 
-@router.put("/roles/{role_id}", response_model=dict, dependencies=[Depends(require_permission("roles", "edit"))])
-def update_role(role_id: int, payload: dict, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
-    role = session.get(Role, role_id)
-    if not role:
-        raise HTTPException(status_code=404, detail="Role not found")
+@router.put("/roles/{role_external_id}", response_model=dict, dependencies=[Depends(require_permission("roles", "edit"))])
+def update_role(role_external_id: str, payload: dict, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
+    role = _get_role_by_external_id(session, role_external_id)
     before = _role_to_dict(session, role)
     if (nm := payload.get("name")) is not None:
         nm = nm.strip()
         if not nm:
             raise HTTPException(status_code=400, detail="Role name cannot be empty")
-        other = session.exec(select(Role).where(Role.name == nm, Role.id != role_id)).first()
+        other = session.exec(select(Role).where(Role.name == nm, Role.id != role.id)).first()
         if other:
             raise HTTPException(status_code=400, detail="Role name already exists")
         role.name = nm
@@ -171,7 +196,7 @@ def update_role(role_id: int, payload: dict, request: Request, session: Session 
 
     if payload.get("permissions") is not None:
         # replace permissions
-        session.exec(delete(RolePermission).where(RolePermission.role_id == role_id))
+        session.exec(delete(RolePermission).where(RolePermission.role_id == role.id))
         session.commit()
         for p in payload.get("permissions") or []:
             art = p.get("artifact")
@@ -196,18 +221,16 @@ def update_role(role_id: int, payload: dict, request: Request, session: Session 
     return out
 
 
-@router.delete("/roles/{role_id}", status_code=204, dependencies=[Depends(require_permission("roles", "delete"))])
-def delete_role(role_id: int, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
-    role = session.get(Role, role_id)
-    if not role:
-        raise HTTPException(status_code=404, detail="Role not found")
+@router.delete("/roles/{role_external_id}", status_code=204, dependencies=[Depends(require_permission("roles", "delete"))])
+def delete_role(role_external_id: str, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
+    role = _get_role_by_external_id(session, role_external_id)
     before = _role_to_dict(session, role)
-    session.exec(delete(RolePermission).where(RolePermission.role_id == role_id))
-    session.exec(delete(UserRole).where(UserRole.role_id == role_id))
+    session.exec(delete(RolePermission).where(RolePermission.role_id == role.id))
+    session.exec(delete(UserRole).where(UserRole.role_id == role.id))
     session.delete(role)
     session.commit()
     try:
-        log_event(session, action="role.delete", entity_type="role", entity_id=role_id, entity_name=before.get("name"), before=before, after=None, metadata=None, request=request, user=user)
+        log_event(session, action="role.delete", entity_type="role", entity_id=role.id, entity_name=before.get("name"), before=before, after=None, metadata=None, request=request, user=user)
     except Exception:
         pass
     return None
@@ -242,7 +265,8 @@ def _user_summary(u: User, roles: List[str]) -> Dict:
     elif getattr(u, "locked_until", None) and u.locked_until > now:
         status = "locked"
     return {
-        "id": u.id,
+        "id": getattr(u, "external_id", None) or str(u.id),
+        "_internal_id": u.id,  # deprecated: prefer id (external_id)
         "username": u.username,
         "email": u.email,
         "is_active": getattr(u, "is_active", True),
@@ -262,22 +286,21 @@ def _user_role_names(session: Session, user_id: int) -> List[str]:
     return [r.name for r in roles]
 
 
-@router.get("/users/{user_id}/roles", response_model=dict, dependencies=[Depends(require_permission("users", "view"))])
-def get_user_roles(user_id: int, session: Session = Depends(get_session), user=Depends(get_current_user)):
-    u = session.get(User, user_id)
-    if not u:
-        raise HTTPException(status_code=404, detail="User not found")
+@router.get("/users/{user_external_id}/roles", response_model=dict, dependencies=[Depends(require_permission("users", "view"))])
+def get_user_roles(user_external_id: str, session: Session = Depends(get_session), user=Depends(get_current_user)):
+    u = _get_user_by_external_id(session, user_external_id)
     if not u.email and (u.username or "").lower() != "admin":
         raise HTTPException(status_code=400, detail="User has no email configured")
     # roles for user
-    urs = session.exec(select(UserRole).where(UserRole.user_id == user_id)).all()
+    urs = session.exec(select(UserRole).where(UserRole.user_id == u.id)).all()
     role_ids = [ur.role_id for ur in urs]
     roles = []
     if role_ids:
         roles = session.exec(select(Role).where(Role.id.in_(role_ids))).all()
     return {
         "user": {
-            "id": u.id,
+            "id": getattr(u, "external_id", None) or str(u.id),
+            "_internal_id": u.id,  # deprecated: prefer id (external_id)
             "username": u.username,
             "email": u.email,
             "is_active": True,
@@ -286,11 +309,9 @@ def get_user_roles(user_id: int, session: Session = Depends(get_session), user=D
     }
 
 
-@router.post("/users/{user_id}/roles", response_model=dict, dependencies=[Depends(require_permission("users", "edit"))])
-def assign_user_roles(user_id: int, payload: dict, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
-    u = session.get(User, user_id)
-    if not u:
-        raise HTTPException(status_code=404, detail="User not found")
+@router.post("/users/{user_external_id}/roles", response_model=dict, dependencies=[Depends(require_permission("users", "edit"))])
+def assign_user_roles(user_external_id: str, payload: dict, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
+    u = _get_user_by_external_id(session, user_external_id)
     role_ids = payload.get("role_ids") or []
     # validate roles exist
     if role_ids:
@@ -298,24 +319,22 @@ def assign_user_roles(user_id: int, payload: dict, request: Request, session: Se
         if len(count) != len(role_ids):
             raise HTTPException(status_code=400, detail="One or more roles do not exist")
     # clear
-    session.exec(delete(UserRole).where(UserRole.user_id == user_id))
+    session.exec(delete(UserRole).where(UserRole.user_id == u.id))
     # assign
     for rid in role_ids:
-        session.add(UserRole(user_id=user_id, role_id=rid))
+        session.add(UserRole(user_id=u.id, role_id=rid))
     session.commit()
-    out = get_user_roles(user_id, session)
+    out = get_user_roles(user_external_id, session)
     try:
-        log_event(session, action="user.roles.assign", entity_type="user", entity_id=user_id, entity_name=u.username, before=None, after={"role_ids": role_ids}, metadata=None, request=request, user=user)
+        log_event(session, action="user.roles.assign", entity_type="user", entity_id=u.id, entity_name=u.username, before=None, after={"role_ids": role_ids}, metadata=None, request=request, user=user)
     except Exception:
         pass
     return out
 
 
-@router.post("/users/{user_id}/disable", status_code=200, dependencies=[Depends(require_permission("users", "edit"))])
-def disable_user(user_id: int, request: Request, session: Session = Depends(get_session), actor=Depends(get_current_user)):
-    u = session.get(User, user_id)
-    if not u:
-        raise HTTPException(status_code=404, detail="User not found")
+@router.post("/users/{user_external_id}/disable", status_code=200, dependencies=[Depends(require_permission("users", "edit"))])
+def disable_user(user_external_id: str, request: Request, session: Session = Depends(get_session), actor=Depends(get_current_user)):
+    u = _get_user_by_external_id(session, user_external_id)
     before = _user_summary(u, _user_role_names(session, u.id))
     u.is_active = False
     u.disabled_at = _utcnow()
@@ -341,11 +360,9 @@ def disable_user(user_id: int, request: Request, session: Session = Depends(get_
     return _user_summary(u, _user_role_names(session, u.id))
 
 
-@router.post("/users/{user_id}/enable", status_code=200, dependencies=[Depends(require_permission("users", "edit"))])
-def enable_user(user_id: int, request: Request, session: Session = Depends(get_session), actor=Depends(get_current_user)):
-    u = session.get(User, user_id)
-    if not u:
-        raise HTTPException(status_code=404, detail="User not found")
+@router.post("/users/{user_external_id}/enable", status_code=200, dependencies=[Depends(require_permission("users", "edit"))])
+def enable_user(user_external_id: str, request: Request, session: Session = Depends(get_session), actor=Depends(get_current_user)):
+    u = _get_user_by_external_id(session, user_external_id)
     before = _user_summary(u, _user_role_names(session, u.id))
     u.is_active = True
     u.disabled_at = None
@@ -373,18 +390,16 @@ def enable_user(user_id: int, request: Request, session: Session = Depends(get_s
     return _user_summary(u, _user_role_names(session, u.id))
 
 
-@router.post("/users/{user_id}/password-reset", status_code=200, dependencies=[Depends(require_permission("users", "edit"))])
+@router.post("/users/{user_external_id}/password-reset", status_code=200, dependencies=[Depends(require_permission("users", "edit"))])
 def admin_password_reset(
-    user_id: int,
+    user_external_id: str,
     request: Request,
     background_tasks: BackgroundTasks,
     payload: Optional[dict] = None,
     session: Session = Depends(get_session),
     actor=Depends(get_current_user),
 ):
-    u = session.get(User, user_id)
-    if not u:
-        raise HTTPException(status_code=404, detail="User not found")
+    u = _get_user_by_external_id(session, user_external_id)
 
     token = _generate_token()
     expires_at = _utcnow() + timedelta(minutes=PASSWORD_RESET_TOKEN_TTL_MINUTES)
@@ -399,18 +414,25 @@ def admin_password_reset(
     session.commit()
     session.refresh(prt)
 
+    tz = get_display_timezone(session)
     base_url = None
     if payload:
         base_url = payload.get("reset_base_url") or payload.get("resetBaseUrl")
-    base_url = base_url or f"{str(request.base_url).rstrip('/')}/#/reset-password"
-    link = f"{base_url}?token={token}"
-    subject = "Reset your BV Orchestrator password"
-    body = (
-        "An administrator has requested a password reset for your account.\n\n"
-        f"Reset link: {link}\n"
-        f"This link expires at {expires_at.isoformat()} UTC.\n"
+    ui_base_url = base_url or resolve_ui_base_url(session, request)
+    content = render_password_reset_email(
+        ui_base_url=ui_base_url,
+        token=token,
+        expires_at_display=to_display_iso(expires_at, tz),
+        timezone=tz,
+        initiated_by_admin=True,
     )
-    email_sent = EmailService(session).send_email(subject, body, to_addresses=[u.email], background_tasks=background_tasks)
+    email_sent = EmailService(session).send_email(
+        subject=content.subject,
+        body=content.text_body,
+        html_body=content.html_body,
+        to_addresses=[u.email],
+        background_tasks=background_tasks,
+    )
 
     try:
         log_event(

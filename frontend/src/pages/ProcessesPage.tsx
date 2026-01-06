@@ -57,7 +57,6 @@ export default function ProcessesPage() {
     try {
       const payload: any = {
         name: values.name,
-        isActive: values.isActive,
         description: values.description,
       };
 
@@ -128,7 +127,7 @@ export default function ProcessesPage() {
   }
 
   function typeLabel(p: Process) {
-    return getProcessTypeLabel(p.package?.isBvpackage ?? false)
+    return getProcessTypeLabel(p.type)
   }
 
   function entrypointLabel(p: Process) {
@@ -242,7 +241,7 @@ export default function ProcessesPage() {
                     <td>
                       <div className="cell-primary">{p.name}</div>
                     </td>
-                    <td><Badge tone={getProcessTypeTone(p.package?.isBvpackage ?? false)}>{typeLabel(p)}</Badge></td>
+                    <td><Badge tone={getProcessTypeTone(p.type)}>{typeLabel(p)}</Badge></td>
                     <td>
                       <span className="mono" title={p.package?.version || "N/A"}>{p.package?.version || "N/A"}</span>
                       {p.upgradeAvailable && p.latestVersion && (
@@ -487,7 +486,6 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
 
   const [form, setForm] = useState<FormValues>({
     name: initial?.name || "",
-    isActive: initial?.isActive ?? true,
     scriptPath: initial?.scriptPath || "",
     entrypointName: initial?.entrypointName || "",
     packageId: initial?.packageId ?? undefined,
@@ -520,10 +518,6 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
 
   function handleDescriptionChange(val: string) {
     setForm((prev) => ({ ...prev, description: val }));
-  }
-
-  function toggleActive() {
-    setForm((prev) => ({ ...prev, isActive: !prev.isActive }));
   }
 
   function selectPackage(name?: string) {
@@ -627,10 +621,6 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
             </label>
           )}
 
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input type="checkbox" checked={form.isActive} onChange={toggleActive} />
-            <span>Active</span>
-          </label>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
@@ -709,7 +699,6 @@ type FormValues = {
   packageId?: number;
   scriptPath: string;
   entrypointName: string;
-  isActive: boolean;
   isBv: boolean;
   description: string;
 };

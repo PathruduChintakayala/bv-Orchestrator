@@ -201,6 +201,45 @@ class JobService:
                 pass
         return self.job_to_out(j)
 
+    def stop_job(self, job_id: int, user: Any, request: Any) -> Dict[str, Any]:
+        j = self.repo.get_by_id(job_id)
+        if not j:
+            raise ValueError("Job not found")
+        j.control_signal = "STOP"
+        self.repo.update(j)
+        try:
+            log_event(self.session, action="job.stop", entity_type="job", entity_id=j.id, entity_name=str(j.id), before=None, after={"control_signal": j.control_signal}, metadata=None, request=request, user=user)
+        except Exception:
+            pass
+        return self.job_to_out(j)
+
+    def kill_job(self, job_id: int, user: Any, request: Any) -> Dict[str, Any]:
+        j = self.repo.get_by_id(job_id)
+        if not j:
+            raise ValueError("Job not found")
+        before_status = j.status
+        j.control_signal = "KILL"
+        if j.status in ("pending", "running"):
+            j.status = "canceled"
+            j.finished_at = now_iso()
+        self.repo.update(j)
+        try:
+            log_event(
+                self.session,
+                action="job.kill",
+                entity_type="job",
+                entity_id=j.id,
+                entity_name=str(j.id),
+                before={"status": before_status},
+                after={"status": j.status, "control_signal": j.control_signal},
+                metadata={"status_from": before_status, "status_to": j.status},
+                request=request,
+                user=user,
+            )
+        except Exception:
+            pass
+        return self.job_to_out(j)
+
     def _update_queue_items_for_job(self, job: Job, final_status: str, background_tasks=None):
         raw_ids = getattr(job, "queue_item_ids", None)
         if not raw_ids:
@@ -224,8 +263,8 @@ class JobService:
             qi.status = target_status
             if qi.job_id is None:
                 qi.job_id = job.id
-            if target_status == "FAILED" and job.error_message and not qi.error_message:
-                qi.error_message = job.error_message
+            if target_status == "FAILED" and job.error_message and not getattr(qi, "error_reason", None):
+                qi.error_reason = job.error_message
             qi.updated_at = now
             self.session.add(qi)
             if target_status == "FAILED":
@@ -255,17 +294,19 @@ class JobService:
             except Exception:
                 return None
         process_out = None
+        process_type = "rpa"
         robot_out = None
         if j.process_id:
             p = self.session.exec(select(Process).where(Process.id == j.process_id)).first()
             if p:
+                process_type = getattr(p, "type", None) or "rpa"
                 process_out = {
                     "id": p.id,
                     "name": p.name,
                     "description": p.description,
                     "package_id": p.package_id,
+                    "type": process_type,
                     "script_path": p.script_path,
-                    "is_active": p.is_active,
                     "version": p.version,
                     "created_at": to_display_iso(p.created_at, tz),
                     "updated_at": to_display_iso(p.updated_at, tz),
@@ -294,9 +335,11 @@ class JobService:
             machine_name = robot_out.get("machine_name")
         
         return {
-            "id": j.id,
+            "id": getattr(j, "external_id", None) or str(j.id),
             "execution_id": getattr(j, "execution_id", None),
+            "_internal_id": j.id,  # deprecated: prefer id (external_id)
             "process_id": j.process_id,
+            "type": process_type,
             "package_id": j.package_id,
             "package_name": getattr(j, "package_name", None),
             "package_version": getattr(j, "package_version", None),
@@ -307,6 +350,7 @@ class JobService:
             "robot_id": j.robot_id,
             "hostname": machine_name,  # Display as hostname (stored as machine_name in DB)
             "status": j.status,
+            "control_signal": getattr(j, "control_signal", None),
             "parameters": parse_json(j.parameters),
             "result": parse_json(j.result),
             "error_message": j.error_message,

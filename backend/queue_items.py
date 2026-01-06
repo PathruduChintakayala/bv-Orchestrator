@@ -1,19 +1,22 @@
 from typing import List, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Header, BackgroundTasks
 from sqlmodel import Session, select
+from sqlalchemy import update, and_, or_
 from backend.db import get_session
 from backend.auth import get_current_user
 from backend.models import QueueItem, Queue
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from backend.audit_utils import log_event
 from backend.permissions import require_permission, has_permission
 from backend.timezone_utils import get_display_timezone, to_display_iso
 from backend.notification_service import NotificationService
 from sqlalchemy.exc import IntegrityError
-from pydantic import BaseModel
+from pydantic import BaseModel, root_validator, validator
 
 router = APIRouter(prefix="/queue-items", tags=["queue-items"])
+
+VISIBILITY_TIMEOUT_SECONDS = 300
 
 
 def get_runtime_auth(
@@ -72,14 +75,46 @@ def get_runtime_auth(
 class CreateQueueItemRequest(BaseModel):
     queue_id: int
     reference: Optional[str] = None
-    priority: int = 0
+    priority: int = 1  # Default NORMAL priority
     payload: Optional[Any] = None
 
 
 class UpdateQueueItemRequest(BaseModel):
     status: Optional[str] = None
-    result: Optional[Any] = None
-    error_message: Optional[str] = None
+    output: Optional[Any] = None
+    error_type: Optional[str] = None
+    error_reason: Optional[str] = None
+
+    @validator("status")
+    def _normalize_status(cls, v: Optional[str]):
+        return v.upper() if isinstance(v, str) else v
+
+    @validator("error_type")
+    def _normalize_error_type(cls, v: Optional[str]):
+        return v.upper() if isinstance(v, str) else v
+
+    @root_validator(skip_on_failure=True)
+    def _validate_contract(cls, values):
+        status = (values.get("status") or "").upper()
+        error_type = values.get("error_type")
+        error_reason = values.get("error_reason")
+        output = values.get("output")
+
+        if status == "DONE":
+            if error_type or error_reason:
+                raise ValueError("error_type and error_reason are not allowed when status is DONE")
+            # output optional
+        if status == "FAILED":
+            if not error_type:
+                raise ValueError("error_type is required when status is FAILED")
+            if not error_reason:
+                raise ValueError("error_reason is required when status is FAILED")
+            if error_type not in {"APPLICATION", "BUSINESS"}:
+                raise ValueError("error_type must be APPLICATION or BUSINESS when status is FAILED")
+        if status == "ABANDONED":
+            if not error_reason:
+                raise ValueError("error_reason is required when status is ABANDONED")
+        return values
 
 
 def utcnow_iso() -> str:
@@ -94,8 +129,9 @@ def _queue_item_to_out(item: QueueItem, tz: str) -> dict:
         "status": item.status,
         "priority": item.priority,
         "payload": item.payload,
-        "result": item.result,
-        "error_message": item.error_message,
+        # Legacy keys preserved for compatibility; mapped to new output/error fields.
+        "result": item.output,
+        "error_message": item.error_reason,
         "retries": item.retries,
         "locked_by_robot_id": item.locked_by_robot_id,
         "locked_at": to_display_iso(item.locked_at, tz),
@@ -139,22 +175,73 @@ def get_next_item(
             raise HTTPException(status_code=404, detail="Queue not found")
         queue_id = queue.id
 
-    # Atomic find and lock (simplistic implementation using status update)
-    item = session.exec(
-        select(QueueItem)
-        .where(QueueItem.queue_id == queue_id, QueueItem.status == "NEW")
-        .order_by(QueueItem.priority.desc(), QueueItem.created_at.asc())
-    ).first()
+    # Inline abandonment: mark long-stuck items as ABANDONED before claiming.
+    abandon_cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+    session.exec(
+        update(QueueItem)
+        .where(
+            QueueItem.queue_id == queue_id,
+            QueueItem.status == "IN_PROGRESS",
+            QueueItem.locked_at.isnot(None),
+            QueueItem.locked_at < abandon_cutoff,
+        )
+        .values(
+            status="ABANDONED",
+            error_reason="Lease expired after 24 hours",
+            locked_by_robot_id=None,
+            locked_at=None,
+            updated_at=utcnow_iso(),
+        )
+    )
+    session.commit()
 
-    if not item:
+    # Lease-aware claim: single UPDATE ... RETURNING to avoid select-then-update races.
+    now_ts = utcnow_iso()
+    cutoff_ts = (datetime.utcnow() - timedelta(seconds=VISIBILITY_TIMEOUT_SECONDS)).isoformat()
+    claimant_id = getattr(auth, "id", None)
+
+    subq = (
+        select(QueueItem.id)
+        .where(
+            QueueItem.queue_id == queue_id,
+            or_(
+                QueueItem.status == "NEW",
+                and_(
+                    QueueItem.status == "IN_PROGRESS",
+                    QueueItem.locked_at.isnot(None),
+                    QueueItem.locked_at < cutoff_ts,
+                ),
+            ),
+        )
+        .order_by(QueueItem.priority.desc(), QueueItem.created_at.asc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+    stmt = (
+        update(QueueItem)
+        .where(QueueItem.id == subq)
+        .values(
+            status="IN_PROGRESS",
+            locked_by_robot_id=claimant_id,
+            locked_at=now_ts,
+            updated_at=now_ts,
+        )
+        .returning(QueueItem)
+    )
+
+    updated_row = session.exec(stmt).first()
+    if not updated_row:
         raise HTTPException(status_code=404, detail="No NEW items available in queue")
 
-    item.status = "IN_PROGRESS"
-    item.updated_at = utcnow_iso()
-    session.add(item)
+    if isinstance(updated_row, QueueItem):
+        item = updated_row
+    else:
+        mapping = updated_row._mapping if hasattr(updated_row, "_mapping") else updated_row
+        item = QueueItem(**dict(mapping))
+
     session.commit()
-    session.refresh(item)
-    
+
     return {
         "id": item.id,
         "payload": json.loads(item.payload) if isinstance(item.payload, str) else item.payload,
@@ -190,10 +277,10 @@ def create_item(payload: CreateQueueItemRequest, request: Request, session: Sess
         queue_id=payload.queue_id,
         reference=payload.reference,
         status="NEW",
-        priority=payload.priority,
+        priority=payload.priority if payload.priority is not None else 1,
         payload=json.dumps(payload.payload) if isinstance(payload.payload, (dict, list)) else payload.payload,
-        result=None,
-        error_message=None,
+        output=None,
+        error_reason=None,
         retries=0,
         locked_by_robot_id=None,
         locked_at=None,
@@ -224,10 +311,12 @@ def update_item(item_id: str, payload: UpdateQueueItemRequest, request: Request,
     before_status = obj.status
     if payload.status is not None:
         obj.status = payload.status
-    if payload.result is not None:
-        obj.result = json.dumps(payload.result) if isinstance(payload.result, (dict, list)) else payload.result
-    if payload.error_message is not None:
-        obj.error_message = payload.error_message
+    if payload.output is not None:
+        obj.output = json.dumps(payload.output) if isinstance(payload.output, (dict, list)) else payload.output
+    if payload.error_type is not None:
+        obj.error_type = payload.error_type
+    if payload.error_reason is not None:
+        obj.error_reason = payload.error_reason
     obj.updated_at = utcnow_iso()
     session.add(obj)
     session.commit()
@@ -268,10 +357,37 @@ def delete_item(item_id: str, request: Request, session: Session = Depends(get_s
     return None
 
 
+@router.post("/{item_id}/requeue", dependencies=[Depends(require_permission("queue_items", "edit"))])
+def requeue_item(item_id: str, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
+    obj = session.get(QueueItem, item_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+    # Only allow replay of terminal failed items.
+    if (obj.status or "").upper() != "FAILED":
+        raise HTTPException(status_code=409, detail="Only FAILED items can be requeued")
+
+    obj.status = "NEW"
+    obj.retries = 0
+    obj.locked_by_robot_id = None
+    obj.locked_at = None
+    obj.updated_at = utcnow_iso()
+    session.add(obj)
+    session.commit()
+    session.refresh(obj)
+
+    try:
+        log_event(session, action="queue_item.requeue", entity_type="queue_item", entity_id=obj.id, entity_name=str(obj.reference or obj.id), before={"status": "FAILED"}, after={"status": obj.status, "retries": obj.retries}, metadata={"requeued": True}, request=request, user=user)
+    except Exception:
+        pass
+
+    return {"id": obj.id, "status": obj.status, "retries": obj.retries}
+
+
 class RuntimeAddRequest(BaseModel):
     queue_name: str
     payload: dict
     reference: Optional[str] = None
+    priority: int = 1  # Default NORMAL priority
 
 
 @router.post("/add")
@@ -296,6 +412,7 @@ def add_item_runtime(
         queue_id=queue.id,
         reference=req.reference,
         status="NEW",
+        priority=req.priority if req.priority is not None else 1,
         payload=json.dumps(req.payload),
         created_at=now,
         updated_at=now,
@@ -319,15 +436,61 @@ def set_item_status_runtime(
     item = session.get(QueueItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Queue item not found")
-    
+
+    robot_id = getattr(auth, "id", None)
+    if not robot_id:
+        raise HTTPException(status_code=403, detail="Robot authentication required")
+
+    # Enforce lease ownership and visibility timeout before allowing status changes.
+    if item.locked_by_robot_id != robot_id:
+        raise HTTPException(status_code=409, detail="Lease owned by another robot")
+    if not item.locked_at:
+        raise HTTPException(status_code=409, detail="Lease is not active")
+    cutoff = datetime.utcnow() - timedelta(seconds=VISIBILITY_TIMEOUT_SECONDS)
+    try:
+        locked_at_dt = datetime.fromisoformat(item.locked_at)
+    except Exception:
+        locked_at_dt = None
+    if not locked_at_dt or locked_at_dt < cutoff:
+        raise HTTPException(status_code=409, detail="Lease has expired")
+
     before_status = item.status
     if payload.status:
         item.status = payload.status
-    if payload.result is not None:
-        item.result = json.dumps(payload.result) if isinstance(payload.result, (dict, list)) else str(payload.result)
-    if payload.error_message is not None:
-        item.error_message = payload.error_message
-    
+    if payload.output is not None:
+        item.output = json.dumps(payload.output) if isinstance(payload.output, (dict, list)) else str(payload.output)
+    if payload.error_type is not None:
+        item.error_type = payload.error_type
+    if payload.error_reason is not None:
+        item.error_reason = payload.error_reason
+    queue = session.get(Queue, item.queue_id)
+
+    # Retry semantics respecting error_type/status contract.
+    if payload.status and payload.status.upper() == "FAILED":
+        err_type = (payload.error_type or item.error_type or "").upper()
+        max_retries = getattr(queue, "max_retries", 0) if queue else 0
+
+        if err_type == "BUSINESS":
+            # Business errors are terminal immediately.
+            item.status = "FAILED"
+            item.error_type = "BUSINESS"
+            item.retries = max_retries or item.retries or 0
+        else:
+            # Application errors retry until max_retries is hit.
+            item.error_type = err_type or "APPLICATION"
+            item.retries = (item.retries or 0) + 1
+            if max_retries and item.retries < max_retries:
+                item.status = "NEW"  # requeue for another attempt
+            else:
+                item.status = "FAILED"  # exhausted retries
+
+    if payload.status and payload.status.upper() == "ABANDONED":
+        # ABANDONED is terminal: no retries and status remains as set.
+        item.retries = max(item.retries or 0, getattr(queue, "max_retries", 0) or item.retries or 0)
+
+    # Clear lease on completion/failure/requeue and bump timestamp.
+    item.locked_by_robot_id = None
+    item.locked_at = None
     item.updated_at = utcnow_iso()
     session.add(item)
     session.commit()

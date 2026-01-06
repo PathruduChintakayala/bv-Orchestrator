@@ -7,7 +7,7 @@ import hashlib
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, Query, status
 from fastapi.responses import FileResponse
 from sqlmodel import select
 
@@ -215,6 +215,20 @@ def _parse_function_signature(source: str, func_name: str) -> list[dict]:
     return params
 
 
+def _get_package_by_external_id(session, external_id: str) -> Package:
+    """Resolve package by external_id (public GUID). Numeric IDs are rejected to enforce GUID usage."""
+    try:
+        int(external_id)
+        raise HTTPException(status_code=400, detail="Package identifiers must be external_id (GUID)")
+    except ValueError:
+        pass
+
+    pkg = session.exec(select(Package).where(Package.external_id == external_id)).first()
+    if not pkg:
+        raise HTTPException(status_code=404, detail="Package not found")
+    return pkg
+
+
 def _can_publish_package_name_version(session, *, name: Optional[str], version: Optional[str]) -> tuple[bool, Optional[str]]:
     """Pure check: validate publishability of name+version.
 
@@ -280,7 +294,7 @@ def to_out(pkg: Package, session=None) -> dict:
     download_available = bool(getattr(pkg, "file_path", None) and os.path.exists(getattr(pkg, "file_path")))
     download_url = None
     if download_available and bool(getattr(pkg, "is_bvpackage", False)):
-        download_url = f"/api/packages/{pkg.id}/versions/{pkg.version}/download"
+        download_url = f"/api/packages/{pkg.external_id}/versions/{pkg.version}/download"
     # Keep is_active derived from live process associations when a session is available.
     active = pkg.is_active
     if session is not None:
@@ -289,10 +303,12 @@ def to_out(pkg: Package, session=None) -> dict:
             active = computed_active
 
     return {
-        "id": pkg.id,
+        "id": getattr(pkg, "external_id", None) or str(pkg.id),
+        "_internal_id": pkg.id,  # deprecated: prefer id (external_id)
         "name": pkg.name,
         "version": pkg.version,
         "is_bvpackage": bool(getattr(pkg, "is_bvpackage", False)),
+        "type": getattr(pkg, "type", None) or "rpa",
         "entrypoints": entrypoints,
         "default_entrypoint": pkg.default_entrypoint,
         "is_active": active,
@@ -383,6 +399,7 @@ def upload_package(
 
     entrypoints = json.dumps(info.entrypoints)
     default_entrypoint = info.default_entrypoint_name
+    process_type = getattr(info, "process_type", None) or "rpa"
 
     scripts: List[str] = []
 
@@ -409,6 +426,7 @@ def upload_package(
     pkg = Package(
         name=name,
         version=version,
+        type=process_type,
         file_path=dest_path,
         hash=digest,
         size_bytes=size_bytes,
@@ -451,7 +469,17 @@ def preflight_publish(payload: dict, session=Depends(get_session)):
     return {"can_publish": False, "reason": reason or "Package cannot be published"}
 
 @router.get("/", dependencies=[Depends(get_current_user), Depends(require_permission("packages", "view"))])
-def list_packages(search: Optional[str] = None, active_only: Optional[bool] = None, name: Optional[str] = None, session=Depends(get_session)):
+def list_packages(
+    search: Optional[str] = None,
+    active_only: Optional[bool] = None,
+    name: Optional[str] = None,
+    package_type: Optional[str] = Query(default=None, alias="type"),
+    session=Depends(get_session),
+):
+    pkg_type = (package_type or "").strip().lower() or None
+    if pkg_type and pkg_type not in {"rpa", "agent"}:
+        raise HTTPException(status_code=400, detail="type must be 'rpa' or 'agent'")
+
     pkgs = session.exec(select(Package)).all()
     if name:
         pkgs = [p for p in pkgs if p.name == name]
@@ -460,6 +488,8 @@ def list_packages(search: Optional[str] = None, active_only: Optional[bool] = No
         pkgs = [p for p in pkgs if s in p.name.lower()]
     if active_only:
         pkgs = [p for p in pkgs if p.is_active]
+    if pkg_type:
+        pkgs = [p for p in pkgs if (getattr(p, "type", None) or "rpa").lower() == pkg_type]
     pkgs.sort(key=lambda p: (p.name.lower(), p.version))
     out = []
     for p in pkgs:
@@ -470,11 +500,9 @@ def list_packages(search: Optional[str] = None, active_only: Optional[bool] = No
         out.append(to_out(p, session))
     return out
 
-@router.get("/{pkg_id}", dependencies=[Depends(get_current_user), Depends(require_permission("packages", "view"))])
-def get_package(pkg_id: int, session=Depends(get_session)):
-    p = session.exec(select(Package).where(Package.id == pkg_id)).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Package not found")
+@router.get("/{pkg_external_id}", dependencies=[Depends(get_current_user), Depends(require_permission("packages", "view"))])
+def get_package(pkg_external_id: str, session=Depends(get_session)):
+    p = _get_package_by_external_id(session, pkg_external_id)
     try:
         ensure_package_metadata(p, session)
     except Exception:
@@ -483,11 +511,12 @@ def get_package(pkg_id: int, session=Depends(get_session)):
 
 
 @router.get(
-    "/{pkg_id}/versions/{version}",
+    "/{pkg_external_id}/versions/{version}",
     dependencies=[Depends(get_current_user), Depends(require_permission("packages", "view"))],
 )
-def get_package_version(pkg_id: int, version: str, session=Depends(get_session)):
-    pkg = session.exec(select(Package).where(Package.id == pkg_id).where(Package.version == version)).first()
+def get_package_version(pkg_external_id: str, version: str, session=Depends(get_session)):
+    pkg = _get_package_by_external_id(session, pkg_external_id)
+    pkg = session.exec(select(Package).where(Package.id == pkg.id).where(Package.version == version)).first()
     if not pkg:
         raise HTTPException(status_code=404, detail="Package version not found")
     pkg = ensure_package_metadata(pkg, session)
@@ -497,22 +526,23 @@ def get_package_version(pkg_id: int, version: str, session=Depends(get_session))
         "version": pkg.version,
         "hash": pkg.hash,
         "sizeBytes": pkg.size_bytes,
-        "downloadUrl": f"/api/packages/{pkg.id}/versions/{pkg.version}/download",
+        "downloadUrl": f"/api/packages/{pkg.external_id}/versions/{pkg.version}/download",
     }
 
 
 @router.get(
-    "/{pkg_id}/versions/{version}/download",
+    "/{pkg_external_id}/versions/{version}/download",
     dependencies=[Depends(get_current_user), Depends(require_permission("packages", "view"))],
 )
 def download_package_version(
-    pkg_id: int,
+    pkg_external_id: str,
     version: str,
     request: Request,
     session=Depends(get_session),
     user=Depends(get_current_user),
 ):
-    pkg = session.exec(select(Package).where(Package.id == pkg_id).where(Package.version == version)).first()
+    pkg = _get_package_by_external_id(session, pkg_external_id)
+    pkg = session.exec(select(Package).where(Package.id == pkg.id).where(Package.version == version)).first()
     if not pkg or not pkg.file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Package version not found")
     if not bool(getattr(pkg, "is_bvpackage", False)):
@@ -546,13 +576,11 @@ def download_package_version(
 
 
 @router.get(
-    "/{pkg_id}/entrypoints/{entrypoint_name}/signature",
+    "/{pkg_external_id}/entrypoints/{entrypoint_name}/signature",
     dependencies=[Depends(get_current_user), Depends(require_permission("packages", "view"))],
 )
-def get_entrypoint_signature(pkg_id: int, entrypoint_name: str, session=Depends(get_session)):
-    pkg = session.exec(select(Package).where(Package.id == pkg_id)).first()
-    if not pkg:
-        raise HTTPException(status_code=404, detail="Package not found")
+def get_entrypoint_signature(pkg_external_id: str, entrypoint_name: str, session=Depends(get_session)):
+    pkg = _get_package_by_external_id(session, pkg_external_id)
     if not bool(getattr(pkg, "is_bvpackage", False)):
         raise HTTPException(status_code=400, detail="Entrypoint signature only available for BV packages")
 
@@ -568,11 +596,9 @@ def get_entrypoint_signature(pkg_id: int, entrypoint_name: str, session=Depends(
     params = _parse_function_signature(source, func_name)
     return {"parameters": params}
 
-@router.put("/{pkg_id}", dependencies=[Depends(get_current_user), Depends(require_permission("packages", "edit"))])
-def update_package(pkg_id: int, payload: dict, request: Request, session=Depends(get_session), user=Depends(get_current_user)):
-    p = session.exec(select(Package).where(Package.id == pkg_id)).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Package not found")
+@router.put("/{pkg_external_id}", dependencies=[Depends(get_current_user), Depends(require_permission("packages", "edit"))])
+def update_package(pkg_external_id: str, payload: dict, request: Request, session=Depends(get_session), user=Depends(get_current_user)):
+    p = _get_package_by_external_id(session, pkg_external_id)
     if not bool(getattr(p, "is_bvpackage", False)):
         raise HTTPException(status_code=400, detail=LEGACY_REBUILD_MESSAGE)
     before_out = to_out(p, session)
@@ -609,13 +635,11 @@ def update_package(pkg_id: int, payload: dict, request: Request, session=Depends
         pass
     return after_out
 
-@router.delete("/{pkg_id}", status_code=204, dependencies=[Depends(get_current_user), Depends(require_permission("packages", "delete"))])
-def delete_package(pkg_id: int, request: Request, session=Depends(get_session), user=Depends(get_current_user)):
-    p = session.exec(select(Package).where(Package.id == pkg_id)).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Package not found")
+@router.delete("/{pkg_external_id}", status_code=204, dependencies=[Depends(get_current_user), Depends(require_permission("packages", "delete"))])
+def delete_package(pkg_external_id: str, request: Request, session=Depends(get_session), user=Depends(get_current_user)):
+    p = _get_package_by_external_id(session, pkg_external_id)
     # Prevent deleting a package version that is still referenced by any process.
-    in_use = session.exec(select(Process.id).where(Process.package_id == pkg_id)).first()
+    in_use = session.exec(select(Process.id).where(Process.package_id == p.id)).first()
     if in_use:
         raise HTTPException(status_code=400, detail="Cannot delete package version while processes still reference it")
     before_out = to_out(p, session)
@@ -628,7 +652,7 @@ def delete_package(pkg_id: int, request: Request, session=Depends(get_session), 
     session.delete(p)
     session.commit()
     try:
-        log_event(session, action="package.delete", entity_type="package", entity_id=pkg_id, entity_name=f"{before_out.get('name')}:{before_out.get('version')}", before=before_out, after=None, metadata=None, request=request, user=user)
+        log_event(session, action="package.delete", entity_type="package", entity_id=p.id, entity_name=f"{before_out.get('name')}:{before_out.get('version')}", before=before_out, after=None, metadata=None, request=request, user=user)
     except Exception:
         pass
     return None

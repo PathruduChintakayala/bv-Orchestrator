@@ -55,6 +55,13 @@ def _recompute_package_active(session, pkg_id: Optional[int]):
         session.refresh(pkg)
 
 
+def _process_type_from_package(pkg: Optional[Package]) -> str:
+    ptype = getattr(pkg, "type", None) or "rpa"
+    if ptype not in ("rpa", "agent"):
+        return "rpa"
+    return ptype
+
+
 def process_to_out(p: Process, session=None) -> dict:
     pkg_out = None
     latest_version = None
@@ -69,14 +76,15 @@ def process_to_out(p: Process, session=None) -> dict:
                 latest_version = latest_pkg.version
                 upgrade_available = _parse_semver(latest_pkg.version) > _parse_semver(pkg.version)
     return {
-        "id": p.id,
+        "id": getattr(p, "external_id", None) or str(p.id),
+        "_internal_id": p.id,  # deprecated: prefer id (external_id)
         "name": p.name,
         "description": p.description,
         "package_id": p.package_id,
         "entrypoint_name": getattr(p, "entrypoint_name", None),
         "script_path": p.script_path,
-        "is_active": p.is_active,
         "version": p.version,
+        "type": getattr(p, "type", None) or "rpa",
         "created_at": p.created_at,
         "updated_at": p.updated_at,
         "package": pkg_out,
@@ -116,7 +124,7 @@ def _validate_process_payload(session, payload: dict) -> dict:
             raise HTTPException(status_code=400, detail=f"entrypoint_name '{entrypoint_name}' does not exist in the selected BV package")
         # script_path must be null/ignored for BV packages.
         normalized_script_path = ""
-        return {"package_id": pkg.id, "entrypoint_name": entrypoint_name, "script_path": normalized_script_path}
+        return {"package_id": pkg.id, "entrypoint_name": entrypoint_name, "script_path": normalized_script_path, "type": _process_type_from_package(pkg)}
 
     # Legacy behavior
     if entrypoint_name:
@@ -126,27 +134,42 @@ def _validate_process_payload(session, payload: dict) -> dict:
     if pkg and bool(getattr(pkg, "is_bvpackage", False)):
         # Safety net: should have been caught above.
         raise HTTPException(status_code=400, detail="BV package processes must use entrypoint_name")
-    return {"package_id": pkg.id if pkg else None, "entrypoint_name": None, "script_path": script_path}
+    return {"package_id": pkg.id if pkg else None, "entrypoint_name": None, "script_path": script_path, "type": _process_type_from_package(pkg)}
 
 
 @router.get("/", dependencies=[Depends(get_current_user), Depends(require_permission("processes", "view"))])
-def list_processes(search: Optional[str] = None, active_only: Optional[bool] = None, session=Depends(get_session)):
+def list_processes(search: Optional[str] = None, session=Depends(get_session)):
     stmt = select(Process)
     processes = session.exec(stmt).all()
     if search:
         s = search.lower()
         processes = [p for p in processes if s in p.name.lower() or (p.description and s in p.description.lower())]
-    if active_only:
-        processes = [p for p in processes if p.is_active]
     processes.sort(key=lambda p: (p.name or "").lower())
     return [process_to_out(p, session) for p in processes]
 
 
-@router.get("/{process_id}", dependencies=[Depends(get_current_user), Depends(require_permission("processes", "view"))])
-def get_process(process_id: int, session=Depends(get_session)):
-    p = session.exec(select(Process).where(Process.id == process_id)).first()
+def _get_process_by_identifier(session, identifier: str) -> Process:
+    """Resolve either numeric id or external_id to a Process.
+
+    Internal logic still uses numeric id; external_id is for API surface.
+    """
+    p = None
+    # Try numeric id first for backward compatibility
+    try:
+        pid = int(identifier)
+        p = session.exec(select(Process).where(Process.id == pid)).first()
+    except Exception:
+        p = None
+    if not p:
+        p = session.exec(select(Process).where(Process.external_id == identifier)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Process not found")
+    return p
+
+
+@router.get("/{process_identifier}", dependencies=[Depends(get_current_user), Depends(require_permission("processes", "view"))])
+def get_process(process_identifier: str, session=Depends(get_session)):
+    p = _get_process_by_identifier(session, process_identifier)
     return process_to_out(p, session)
 
 
@@ -166,7 +189,7 @@ def create_process(payload: dict, request: Request, session=Depends(get_session)
         package_id=normalized["package_id"],
         entrypoint_name=normalized["entrypoint_name"],
         script_path=normalized["script_path"],
-        is_active=bool(payload.get("is_active", True)),
+        type=normalized.get("type") or "rpa",
         version=1,
         created_at=now_iso(),
         updated_at=now_iso(),
@@ -183,11 +206,9 @@ def create_process(payload: dict, request: Request, session=Depends(get_session)
     return out
 
 
-@router.put("/{process_id}", dependencies=[Depends(get_current_user), Depends(require_permission("processes", "edit"))])
-def update_process(process_id: int, payload: dict, request: Request, session=Depends(get_session), user=Depends(get_current_user)):
-    p = session.exec(select(Process).where(Process.id == process_id)).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Process not found")
+@router.put("/{process_identifier}", dependencies=[Depends(get_current_user), Depends(require_permission("processes", "edit"))])
+def update_process(process_identifier: str, payload: dict, request: Request, session=Depends(get_session), user=Depends(get_current_user)):
+    p = _get_process_by_identifier(session, process_identifier)
     before_out = process_to_out(p, session)
     old_package_id = p.package_id
 
@@ -225,12 +246,6 @@ def update_process(process_id: int, payload: dict, request: Request, session=Dep
             p.script_path = new_sp
             definition_changed = True
 
-    if "is_active" in payload and payload.get("is_active") is not None:
-        new_active = bool(payload["is_active"])
-        if new_active != p.is_active:
-            p.is_active = new_active
-            definition_changed = True
-
     # Enforce bvpackage vs legacy combination rules after applying changes.
     # Use the same validation logic on the would-be state.
     effective_payload = {
@@ -242,6 +257,7 @@ def update_process(process_id: int, payload: dict, request: Request, session=Dep
     p.package_id = normalized["package_id"]
     p.entrypoint_name = normalized["entrypoint_name"]
     p.script_path = normalized["script_path"]
+    p.type = normalized.get("type") or getattr(p, "type", "rpa") or "rpa"
 
     if definition_changed:
         p.version = int(p.version or 1) + 1
@@ -305,6 +321,7 @@ def upgrade_process_to_latest(process_id: int, request: Request, session=Depends
     p.package_id = normalized["package_id"]
     p.entrypoint_name = normalized["entrypoint_name"]
     p.script_path = normalized["script_path"]
+    p.type = normalized.get("type") or getattr(p, "type", "rpa") or "rpa"
     p.version = int(p.version or 1) + 1
     p.updated_at = now_iso()
     session.add(p)

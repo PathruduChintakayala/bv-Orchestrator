@@ -75,7 +75,7 @@ def get_overview(session=Depends(get_session), user=Depends(get_current_user)):
             "jobs_today_failed": jobs_today_failed,
             "running_jobs": len(running_jobs),
             "total_processes": len(processes),
-            "active_processes": sum(1 for p in processes if p.is_active),
+            "active_processes": len(processes),
             "total_assets": len(assets),
             "total_queues": len(queues),
             "total_triggers": len(triggers),

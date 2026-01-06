@@ -5,7 +5,7 @@ export interface Process {
   packageId?: number | null;
   scriptPath: string;
   entrypointName?: string | null;
-  isActive: boolean;
+  type?: 'rpa' | 'agent' | string | null;
   version: number;
   createdAt: string;
   updatedAt: string;

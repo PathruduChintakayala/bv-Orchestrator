@@ -12,6 +12,7 @@ def test_upload_valid_bvpackage_succeeds(client):
     assert body["name"] == "demo"
     assert body["version"] == "1.2.3"
     assert body["is_bvpackage"] is True
+    assert body.get("type") == "rpa"
     assert isinstance(body["entrypoints"], list)
     assert body["default_entrypoint"] == "main"
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { QueueItem, QueueItemStatus } from '../types/queueItem'
+import { formatQueueItemPriority, queueItemPriorityLabels } from '../types/queueItem'
 import { fetchQueueItems, createQueueItem, updateQueueItem } from '../api/queueItems'
 import { formatDisplayTime } from '../utils/datetime'
 import { fetchQueues } from '../api/queues'
@@ -10,6 +11,8 @@ export default function QueueItemsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<QueueItemStatus | ''>('')
+  const [priorityFilter, setPriorityFilter] = useState<number | ''>('')
+  const [prioritySort, setPrioritySort] = useState<'none' | 'asc' | 'desc'>('none')
   const [selected, setSelected] = useState<string[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [currentQueue, setCurrentQueue] = useState<import('../types/queue').Queue | null>(null)
@@ -78,7 +81,7 @@ export default function QueueItemsPage() {
   }
 
   function toggleSelectAll() {
-    const selectableItems = items.filter(it => it.status !== 'deleted')
+    const selectableItems = visibleItems.filter(it => it.status !== 'deleted')
     if (selected.length === selectableItems.length) {
       setSelected([])
     } else {
@@ -108,6 +111,19 @@ export default function QueueItemsPage() {
     await load()
   }
 
+  function togglePrioritySort() {
+    setPrioritySort(prev => prev === 'none' ? 'desc' : prev === 'desc' ? 'asc' : 'none')
+  }
+
+  const filteredItems = items.filter(it => {
+    if (priorityFilter !== '' && it.priority !== priorityFilter) return false
+    return true
+  })
+
+  const visibleItems = prioritySort === 'none'
+    ? filteredItems
+    : [...filteredItems].sort((a, b) => prioritySort === 'asc' ? a.priority - b.priority : b.priority - a.priority)
+
   // If no queueId is provided, show a message
   if (queueId === null) {
     return (
@@ -135,6 +151,16 @@ export default function QueueItemsPage() {
               <option value=''>All statuses</option>
               {(['new', 'in_progress', 'completed', 'failed', 'deleted'] as QueueItemStatus[]).map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+            <select
+              value={priorityFilter === '' ? '' : String(priorityFilter)}
+              onChange={e => setPriorityFilter(e.target.value === '' ? '' : Number(e.target.value))}
+              style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }}
+            >
+              <option value=''>All priorities</option>
+              {Object.entries(queueItemPriorityLabels).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
             <button onClick={load} title="Refresh" style={{ ...secondaryBtn, padding: '10px', fontSize: '16px' }}>↻</button>
             <button onClick={openNew} style={primaryBtn}>New Item</button>
           </div>
@@ -152,27 +178,27 @@ export default function QueueItemsPage() {
               <thead>
                 <tr>
                   <th style={{ width: 40 }}>
-                    <input type="checkbox" checked={selected.length === items.filter(it => it.status !== 'deleted').length && items.filter(it => it.status !== 'deleted').length > 0} onChange={toggleSelectAll} ref={(el) => {
-                      if (el) el.indeterminate = selected.length > 0 && selected.length < items.filter(it => it.status !== 'deleted').length
+                    <input type="checkbox" checked={selected.length === visibleItems.filter(it => it.status !== 'deleted').length && visibleItems.filter(it => it.status !== 'deleted').length > 0} onChange={toggleSelectAll} ref={(el) => {
+                      if (el) el.indeterminate = selected.length > 0 && selected.length < visibleItems.filter(it => it.status !== 'deleted').length
                     }} />
                   </th>
                   <th>Reference</th>
                   <th>Status</th>
-                  <th data-align="right">Priority</th>
+                  <th data-align="right" style={{ cursor: 'pointer' }} onClick={togglePrioritySort} title="Sort by priority">Priority {prioritySort === 'asc' ? '↑' : prioritySort === 'desc' ? '↓' : ''}</th>
                   <th data-align="right">Retries</th>
                   <th>Created</th>
                   <th data-type="actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map(it => (
+                {visibleItems.map(it => (
                   <tr key={it.id}>
                     <td>
                       <input type="checkbox" checked={selected.includes(it.id)} onChange={() => toggleSelect(it.id)} disabled={it.status === 'deleted'} />
                     </td>
                     <td>{it.reference ?? '-'}</td>
                     <td><StatusBadge status={it.status} /></td>
-                    <td data-align="right">{it.priority}</td>
+                    <td data-align="right">{formatQueueItemPriority(it.priority)}</td>
                     <td data-align="right">{it.retries}</td>
                     <td>{formatDisplayTime(it.createdAt)}</td>
                     <td data-type="actions">
@@ -180,7 +206,7 @@ export default function QueueItemsPage() {
                     </td>
                   </tr>
                 ))}
-                {items.length === 0 && (
+                {visibleItems.length === 0 && (
                   <tr><td colSpan={7} style={{ paddingTop: 12, color: '#6b7280' }}>No items found</td></tr>
                 )}
               </tbody>
@@ -310,7 +336,7 @@ function DetailsModal({ item, onClose }: { item: QueueItem; onClose: () => void 
         <div style={{ display: 'grid', gap: 12 }}>
           <div><strong>Reference:</strong> {item.reference ?? 'N/A'}</div>
           <div><strong>Status:</strong> <StatusBadge status={item.status} /></div>
-          <div><strong>Priority:</strong> {item.priority}</div>
+          <div><strong>Priority:</strong> {formatQueueItemPriority(item.priority)}</div>
           <div><strong>Retries:</strong> {item.retries}</div>
           <div><strong>Created At:</strong> {formatDisplayTime(item.createdAt)}</div>
           <div><strong>Updated At:</strong> {formatDisplayTime(item.updatedAt)}</div>

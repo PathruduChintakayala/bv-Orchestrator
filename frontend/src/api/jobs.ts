@@ -45,3 +45,15 @@ export async function cancelJob(id: number): Promise<Job> {
   if (!res.ok) throw new Error(await readError(res));
   return toCamel(await res.json()) as Job;
 }
+
+export async function stopJob(id: number): Promise<Job> {
+  const res = await fetch(`/api/jobs/${id}/stop`, { method: "POST", headers: authHeaders() });
+  if (!res.ok) throw new Error(await readError(res));
+  return toCamel(await res.json()) as Job;
+}
+
+export async function killJob(id: number): Promise<Job> {
+  const res = await fetch(`/api/jobs/${id}/kill`, { method: "POST", headers: authHeaders() });
+  if (!res.ok) throw new Error(await readError(res));
+  return toCamel(await res.json()) as Job;
+}

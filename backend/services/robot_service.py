@@ -197,7 +197,8 @@ class RobotService:
             m = self.machine_repo.get_by_id(r.machine_id)
             machine_name = m.name if m else None
         return {
-            "id": r.id,
+            "id": getattr(r, "external_id", None) or str(r.id),
+            "_internal_id": r.id,  # deprecated: prefer id (external_id)
             "name": r.name,
             "status": r.status,
             "machine_id": r.machine_id,

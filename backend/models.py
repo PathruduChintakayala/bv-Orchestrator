@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional, Annotated
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Index
+from sqlalchemy import Index, Column, JSON
 from sqlmodel import SQLModel, Field
 from enum import Enum
 
@@ -24,6 +24,7 @@ class CredentialStoreType(str, Enum):
 class CredentialStore(SQLModel, table=True):
     __tablename__ = "credential_store"
     id: Optional[int] = Field(default=None, primary_key=True)
+    external_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
     name: str = Field(index=True, unique=True)
     type: CredentialStoreType = Field(index=True)
     is_default: bool = Field(default=False, index=True)
@@ -36,6 +37,7 @@ class CredentialStore(SQLModel, table=True):
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    external_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
     username: str = Field(index=True, unique=True)
     password_hash: str
     is_admin: bool = False
@@ -58,14 +60,15 @@ class User(SQLModel, table=True):
 class Process(SQLModel, table=True):
     __tablename__ = "processes"
     id: Optional[int] = Field(default=None, primary_key=True)
+    external_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
     name: str = Field(index=True, unique=True)
     description: Optional[str] = None
     package_id: Optional[int] = None
+    type: Optional[str] = Field(default="rpa", index=True)  # "rpa" | "agent"
     # Legacy packages use script_path. BV packages use entrypoint_name.
     # NOTE: Kept as required str for backward compatibility with existing DB schema.
     script_path: str
     entrypoint_name: Optional[str] = Field(default=None, index=True)
-    is_active: bool = True
     version: int = 1
     created_at: str
     updated_at: str
@@ -73,8 +76,10 @@ class Process(SQLModel, table=True):
 class Package(SQLModel, table=True):
     __tablename__ = "packages"
     id: Optional[int] = Field(default=None, primary_key=True)
+    external_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
     name: str
     version: str
+    type: Optional[str] = Field(default="rpa", index=True)  # "rpa" | "agent"
     file_path: str
     hash: Optional[str] = Field(default=None, index=True)
     size_bytes: Optional[int] = Field(default=None)
@@ -90,6 +95,7 @@ class Package(SQLModel, table=True):
 class Robot(SQLModel, table=True):
     __tablename__ = "robots"
     id: Optional[int] = Field(default=None, primary_key=True)
+    external_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
     name: str = Field(index=True, unique=True)
     status: str = Field(default="disconnected")  # "connected" | "disconnected"
     last_heartbeat: Optional[str] = None
@@ -107,6 +113,7 @@ class Robot(SQLModel, table=True):
 class Machine(SQLModel, table=True):
     __tablename__ = "machines"
     id: Optional[int] = Field(default=None, primary_key=True)
+    external_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
     name: str = Field(index=True, unique=True)
     mode: str  # "dev" | "runner"
     status: str  # "connected" | "disconnected"
@@ -121,6 +128,7 @@ class Machine(SQLModel, table=True):
 class Job(SQLModel, table=True):
     __tablename__ = "jobs"
     id: Optional[int] = Field(default=None, primary_key=True)
+    external_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
     execution_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
     process_id: int
     package_id: Optional[int] = None
@@ -134,6 +142,7 @@ class Job(SQLModel, table=True):
     robot_id: Optional[int] = None
     machine_name: Optional[str] = None  # Snapshot of machine name when job started running
     status: str = Field(default="pending")  # "pending" | "running" | "completed" | "failed" | "canceled"
+    control_signal: Optional[str] = Field(default=None)  # "STOP" | "KILL" | None
     parameters: Optional[str] = None
     result: Optional[str] = None
     error_message: Optional[str] = None
@@ -163,8 +172,22 @@ class JobExecutionLog(SQLModel, table=True):
     host_identity: Optional[str] = None  # Robot username at log creation time
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
+
+class QueueItemStatus(str, Enum):
+    NEW = "NEW"
+    IN_PROGRESS = "IN_PROGRESS"
+    DONE = "DONE"
+    FAILED = "FAILED"
+    ABANDONED = "ABANDONED"
+
+
+class QueueItemErrorType(str, Enum):
+    APPLICATION = "APPLICATION"
+    BUSINESS = "BUSINESS"
+
 class Asset(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    external_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
     name: str = Field(index=True, unique=True)
     type: str  # "text" | "int" | "bool" | "secret" | "credential"
     value: str
@@ -191,11 +214,12 @@ class QueueItem(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True)
     queue_id: int = Field(index=True)
     reference: Optional[str] = Field(default=None, index=True)
-    status: str = Field(default="NEW")  # NEW | IN_PROGRESS | DONE | FAILED | DELETED
+    status: QueueItemStatus = Field(default=QueueItemStatus.NEW)
     priority: int = 0
     payload: Optional[str] = None
-    result: Optional[str] = None
-    error_message: Optional[str] = None
+    output: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    error_type: Optional[QueueItemErrorType] = Field(default=None)
+    error_reason: Optional[str] = None
     retries: int = 0
     locked_by_robot_id: Optional[int] = None
     locked_at: Optional[str] = None
@@ -209,6 +233,7 @@ class QueueItem(SQLModel, table=True):
 class Role(SQLModel, table=True):
     __tablename__ = "roles"
     id: Optional[int] = Field(default=None, primary_key=True)
+    external_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
     name: str = Field(index=True, unique=True)
     description: Optional[str] = None
     created_at: str

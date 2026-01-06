@@ -1,6 +1,8 @@
 import json
+import re
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from fastapi import HTTPException
 from sqlmodel import Session, select
 from backend.models import Asset, CredentialStore
 from backend.repositories.asset_repository import AssetRepository
@@ -30,6 +32,14 @@ class AssetService:
         if not store.is_active and store.is_default:
             raise ValueError("Default credential store is inactive")
         return store.id
+
+    def _validate_int_value(self, raw: Any) -> str:
+        s = str(raw).strip()
+        if not s:
+            raise HTTPException(status_code=422, detail="Int asset value is required and must be a whole number")
+        if not re.fullmatch(r"-?\d+", s):
+            raise HTTPException(status_code=422, detail="Int asset value must be a whole number")
+        return s
 
     def list_assets(self, search: Optional[str] = None) -> List[Dict[str, Any]]:
         assets = self.repo.get_all()
@@ -79,7 +89,12 @@ class AssetService:
 
         if cur_type in {"text", "int", "bool"}:
             if "value" in payload and payload["value"] is not None:
-                a.value = str(payload["value"]).strip()
+                new_val = str(payload["value"]).strip()
+                if cur_type == "int":
+                    new_val = self._validate_int_value(payload["value"])
+                a.value = new_val
+            elif cur_type == "int":
+                a.value = self._validate_int_value(a.value)
         elif cur_type == "secret":
             if "value" in payload and payload["value"]:
                 val = str(payload["value"]).strip()
@@ -157,9 +172,12 @@ class AssetService:
         credential_store_id: Optional[int] = None
 
         if asset_type in {"text", "int", "bool"}:
-            value = (payload.get("value") or "").strip()
+            value_raw = payload.get("value")
+            value = (value_raw or "").strip()
             if not value:
                 raise ValueError("Value is required")
+            if asset_type == "int":
+                value = self._validate_int_value(value_raw)
             stored_value = value
             is_secret = False
         elif asset_type == "secret":
@@ -222,7 +240,12 @@ class AssetService:
 
         if cur_type in {"text", "int", "bool"}:
             if "value" in payload and payload["value"] is not None:
-                a.value = str(payload["value"]).strip()
+                new_val = str(payload["value"]).strip()
+                if cur_type == "int":
+                    new_val = self._validate_int_value(payload["value"])
+                a.value = new_val
+            elif cur_type == "int":
+                a.value = self._validate_int_value(a.value)
             a.is_secret = False
             new_store_id = None
         elif cur_type == "secret":
@@ -306,7 +329,8 @@ class AssetService:
                 username_out = None
             value_out = "***"
         return {
-            "id": a.id,
+            "id": getattr(a, "external_id", None) or str(a.id),
+            "_internal_id": a.id,  # deprecated: prefer id (external_id)
             "name": a.name,
             "type": typ,
             "value": value_out,

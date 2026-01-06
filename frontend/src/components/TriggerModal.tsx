@@ -100,7 +100,7 @@ export default function TriggerModal({ open, onClose, defaultProcessId, lockProc
     async function loadRefs() {
       try {
         const [ps, qs, rs] = await Promise.all([
-          processesProp?.length ? Promise.resolve(processesProp) : fetchProcesses({ activeOnly: false }),
+          processesProp?.length ? Promise.resolve(processesProp) : fetchProcesses(),
           queuesProp?.length ? Promise.resolve(queuesProp) : fetchQueues({ search: '' }),
           robotsProp?.length ? Promise.resolve(robotsProp) : fetchRobots(),
         ])
