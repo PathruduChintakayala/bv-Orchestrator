@@ -3,6 +3,8 @@ import { useAuth } from '../auth'
 import type { ArtifactKey, Role, RolePermission, UserInvite, UserSummary } from '../types/access'
 import { fetchRoles, createRole, updateRole, deleteRole, fetchUsers, assignUserRoles, fetchUserRoles, fetchInvites, sendInvite, resendInvite, revokeInvite, disableUser, enableUser, adminPasswordReset } from '../api/access'
 import { formatDisplayTime } from '../utils/datetime'
+import { useDialog } from '../components/DialogProvider'
+import { useToast } from '../components/ToastProvider'
 
 const ARTIFACTS: ArtifactKey[] = ['dashboard', 'processes', 'packages', 'assets', 'jobs', 'robots', 'queues', 'queue_items', 'users', 'roles']
 
@@ -55,6 +57,8 @@ export default function ManageAccessPage() {
 }
 
 function RolesTab() {
+  const dialog = useDialog()
+  const { pushToast } = useToast()
   const [items, setItems] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -80,13 +84,14 @@ function RolesTab() {
       } else {
         await createRole({ name: values.name, description: values.description, permissions: values.permissions })
       }
-      closeModal(); await load()
-    } catch (e: any) { alert(e.message || 'Save failed') }
+      closeModal(); await load(); pushToast({ title: editing ? 'Role updated' : 'Role created', tone: 'success' })
+    } catch (e: any) { await dialog.alert({ title: 'Save failed', message: e.message || 'Unable to save role' }) }
   }
 
   async function handleDelete(id: number) {
-    if (!confirm('Delete this role?')) return
-    try { await deleteRole(id); await load() } catch (e: any) { alert(e.message || 'Delete failed') }
+    const confirmed = await dialog.confirm({ title: 'Delete this role?', message: 'This action cannot be undone.', tone: 'danger', confirmLabel: 'Delete' })
+    if (!confirmed) return
+    try { await deleteRole(id); await load(); pushToast({ title: 'Role deleted', tone: 'success' }) } catch (e: any) { await dialog.alert({ title: 'Delete failed', message: e.message || 'Unable to delete role' }) }
   }
 
   return (
@@ -130,6 +135,7 @@ function RolesTab() {
 }
 
 function RoleModal({ initial, onCancel, onSave }: { initial: Role | null; onCancel: () => void; onSave: (v: RoleFormValues) => void }) {
+  const dialog = useDialog()
   const initPerms: RolePermission[] = useMemo(() => {
     const map: Record<ArtifactKey, RolePermission> = {} as any
     ARTIFACTS.forEach(a => {
@@ -157,7 +163,7 @@ function RoleModal({ initial, onCancel, onSave }: { initial: Role | null; onCanc
   }
 
   async function submit() {
-    if (!initial && !form.name.trim()) { alert('Name is required'); return }
+    if (!initial && !form.name.trim()) { await dialog.alert({ title: 'Name is required', message: 'Enter a role name to continue' }); return }
     try { setSaving(true); await onSave(form) } finally { setSaving(false) }
   }
 
@@ -216,6 +222,8 @@ function RoleModal({ initial, onCancel, onSave }: { initial: Role | null; onCanc
 }
 
 function UsersTab({ canInvite, canManageUsers }: { canInvite: boolean; canManageUsers: boolean }) {
+  const dialog = useDialog()
+  const { pushToast } = useToast()
   const [users, setUsers] = useState<UserSummary[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [selected, setSelected] = useState<UserSummary | null>(null)
@@ -275,8 +283,8 @@ function UsersTab({ canInvite, canManageUsers }: { canInvite: boolean; canManage
 
   async function save() {
     if (!selected) return
-    try { await assignUserRoles(selected.id, assigned); alert('Roles saved') }
-    catch (e: any) { alert(e.message || 'Save failed') }
+    try { await assignUserRoles(selected.id, assigned); pushToast({ title: 'Roles saved', tone: 'success' }) }
+    catch (e: any) { await dialog.alert({ title: 'Save failed', message: e.message || 'Unable to save roles' }) }
   }
 
   function toggleRole(id: number) {
@@ -290,34 +298,40 @@ function UsersTab({ canInvite, canManageUsers }: { canInvite: boolean; canManage
 
   async function handleDisable() {
     if (!selected) return
-    if (!confirm(`Disable ${selected.username}? They will be signed out and cannot log in.`)) return
+    const confirmed = await dialog.confirm({ title: `Disable ${selected.username}?`, message: 'They will be signed out and cannot log in.', tone: 'danger', confirmLabel: 'Disable' })
+    if (!confirmed) return
     try {
       setUserActionMessage(null)
       await disableUser(selected.id)
       setUserActionMessage('User disabled')
+      pushToast({ title: 'User disabled', tone: 'success' })
       await load(selected.id)
-    } catch (e: any) { alert(e.message || 'Failed to disable user') }
+    } catch (e: any) { await dialog.alert({ title: 'Disable failed', message: e.message || 'Failed to disable user' }) }
   }
 
   async function handleEnable() {
     if (!selected) return
-    if (!confirm(`Enable ${selected.username}?`)) return
+    const confirmed = await dialog.confirm({ title: `Enable ${selected.username}?`, message: 'Allow this user to log in.', confirmLabel: 'Enable' })
+    if (!confirmed) return
     try {
       setUserActionMessage(null)
       await enableUser(selected.id)
       setUserActionMessage('User enabled')
+      pushToast({ title: 'User enabled', tone: 'success' })
       await load(selected.id)
-    } catch (e: any) { alert(e.message || 'Failed to enable user') }
+    } catch (e: any) { await dialog.alert({ title: 'Enable failed', message: e.message || 'Failed to enable user' }) }
   }
 
   async function handleAdminReset() {
     if (!selected) return
-    if (!confirm(`Send a password reset link to ${selected.username}?`)) return
+    const confirmed = await dialog.confirm({ title: `Send reset to ${selected.username}?`, message: 'A password reset link will be sent.', confirmLabel: 'Send' })
+    if (!confirmed) return
     try {
       setUserActionMessage(null)
       await adminPasswordReset(selected.id)
       setUserActionMessage('Reset link queued')
-    } catch (e: any) { alert(e.message || 'Failed to send reset link') }
+      pushToast({ title: 'Reset link queued', tone: 'success' })
+    } catch (e: any) { await dialog.alert({ title: 'Reset failed', message: e.message || 'Failed to send reset link' }) }
   }
 
   return (

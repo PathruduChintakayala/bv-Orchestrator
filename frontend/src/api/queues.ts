@@ -7,8 +7,14 @@ function authHeaders() {
 }
 
 function toClient(q: any): Queue {
+  const externalCandidate = q?.external_id ?? q?.id
+  const externalId = externalCandidate ? String(externalCandidate) : ''
+  if (!externalId || /^\d+$/.test(externalId)) {
+    throw new Error('Queue external_id missing or invalid (must be GUID)')
+  }
   return {
-    id: q.id,
+    internalId: q?._internal_id ?? q?.id ?? null,
+    externalId,
     name: q.name,
     description: q.description ?? null,
     maxRetries: q.max_retries ?? 0,
@@ -40,16 +46,19 @@ export async function createQueue(payload: { name: string; description?: string;
   return toClient(await res.json())
 }
 
-export async function updateQueue(id: number, payload: Partial<{ description: string; maxRetries: number }>): Promise<Queue> {
+export async function updateQueue(externalId: string, payload: Partial<{ description: string; maxRetries: number }>): Promise<Queue> {
   const body: any = {}
   if (payload.description !== undefined) body.description = payload.description
   if (payload.maxRetries !== undefined) body.max_retries = payload.maxRetries
-  const res = await fetch(`/api/queues/${id}`, { method: 'PUT', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!externalId || /^\d+$/.test(externalId)) {
+    throw new Error('Queue external_id missing or invalid (must be GUID)')
+  }
+  const res = await fetch(`/api/queues/${externalId}`, { method: 'PUT', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!res.ok) throw new Error(await res.text())
   return toClient(await res.json())
 }
 
-export async function fetchQueueStats(queueId: number): Promise<{
+export async function fetchQueueStats(externalId: string): Promise<{
   inProgress: number;
   remaining: number;
   avgProcessingTime: number;
@@ -57,12 +66,18 @@ export async function fetchQueueStats(queueId: number): Promise<{
   appExceptions: number;
   bizExceptions: number;
 }> {
-  const res = await fetch(`/api/queues/${queueId}/stats`, { headers: authHeaders() })
+  if (!externalId || /^\d+$/.test(externalId)) {
+    throw new Error('Queue external_id missing or invalid (must be GUID)')
+  }
+  const res = await fetch(`/api/queues/${externalId}/stats`, { headers: authHeaders() })
   if (!res.ok) throw new Error(await res.text())
   return toCamel(await res.json())
 }
 
-export async function deleteQueue(id: number): Promise<void> {
-  const res = await fetch(`/api/queues/${id}`, { method: 'DELETE', headers: authHeaders() })
+export async function deleteQueue(externalId: string): Promise<void> {
+  if (!externalId || /^\d+$/.test(externalId)) {
+    throw new Error('Queue external_id missing or invalid (must be GUID)')
+  }
+  const res = await fetch(`/api/queues/${externalId}`, { method: 'DELETE', headers: authHeaders() })
   if (!res.ok) throw new Error(await res.text())
 }

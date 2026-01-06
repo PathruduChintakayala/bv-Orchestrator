@@ -11,11 +11,15 @@ import { fetchRobots } from "../api/robots"
 import { createJob } from "../api/jobs"
 import TriggerModal from "../components/TriggerModal"
 import { formatDisplayTime } from '../utils/datetime'
+import { useDialog } from "../components/DialogProvider"
+import { useToast } from "../components/ToastProvider"
 
 
 const dangerBtn: CSSProperties = { padding: "10px 14px", borderRadius: 8, backgroundColor: "#dc2626", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }
 
 export default function TriggersPage() {
+  const dialog = useDialog()
+  const { pushToast } = useToast()
   const [items, setItems] = useState<Trigger[]>([])
   const [processes, setProcesses] = useState<Process[]>([])
   const [queues, setQueues] = useState<Queue[]>([])
@@ -77,17 +81,18 @@ export default function TriggersPage() {
         await disableTrigger(t.id)
       }
       await load()
+      pushToast({ title: nextEnabled ? "Trigger enabled" : "Trigger disabled", tone: "success" })
     } catch (e: any) {
-      alert(e.message || "Action failed")
+      await dialog.alert({ title: "Action failed", message: e.message || "Unable to update trigger" })
     }
   }
 
   async function handleRunNow(t: Trigger) {
     try {
       await createJob({ processId: t.processId, robotId: t.robotId ?? null, parameters: { source: 'Trigger', triggerId: t.id } })
-      alert('Job started from trigger')
+      pushToast({ title: 'Job started from trigger', tone: 'success' })
     } catch (e: any) {
-      alert(e.message || 'Run failed')
+      await dialog.alert({ title: 'Run failed', message: e.message || 'Unable to start job' })
     }
   }
 
@@ -97,12 +102,14 @@ export default function TriggersPage() {
   }
 
   async function handleDelete(t: Trigger) {
-    if (!confirm('Delete this trigger?')) return
+    const confirmed = await dialog.confirm({ title: 'Delete this trigger?', message: 'This action cannot be undone.', tone: 'danger', confirmLabel: 'Delete' })
+    if (!confirmed) return
     try {
       await deleteTrigger(t.id)
       await load()
+      pushToast({ title: 'Trigger deleted', tone: 'success' })
     } catch (e: any) {
-      alert(e.message || 'Delete failed')
+      await dialog.alert({ title: 'Delete failed', message: e.message || 'Unable to delete trigger' })
     }
   }
 
@@ -120,7 +127,13 @@ export default function TriggersPage() {
 
   async function handleBulkDelete() {
     if (selected.length === 0) return
-    if (!confirm(`Delete ${selected.length} selected trigger(s)? This action cannot be undone.`)) return
+    const confirmed = await dialog.confirm({
+      title: `Delete ${selected.length} selected trigger(s)?`,
+      message: "This action cannot be undone.",
+      tone: "danger",
+      confirmLabel: "Delete",
+    })
+    if (!confirmed) return
     let successCount = 0
     let errorMessages: string[] = []
     for (const id of selected) {
@@ -132,9 +145,9 @@ export default function TriggersPage() {
       }
     }
     if (errorMessages.length > 0) {
-      alert(`Deleted ${successCount} trigger(s).\n\nErrors:\n${errorMessages.join('\n')}`)
+      await dialog.alert({ title: "Partial delete", message: `Deleted ${successCount} trigger(s).\n\nErrors:\n${errorMessages.join('\n')}` })
     } else {
-      alert(`Successfully deleted ${successCount} trigger(s).`)
+      pushToast({ title: `Deleted ${successCount} trigger(s)`, tone: "success" })
     }
     setSelected([])
     await load()

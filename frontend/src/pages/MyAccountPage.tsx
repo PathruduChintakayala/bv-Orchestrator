@@ -5,6 +5,8 @@ import { changeMyPassword, deleteMyAvatar, fetchAuthMe, fetchMyProfile, listMySe
 import type { MyProfile, SessionInfo } from '../types/me'
 import { formatDisplayTime } from '../utils/datetime'
 import { Avatar } from '../components/Avatar'
+import { useDialog } from '../components/DialogProvider'
+import { useToast } from '../components/ToastProvider'
 
 type TabKey = 'account' | 'security'
 
@@ -15,6 +17,8 @@ function tabFromHash(hash: string): TabKey {
 
 export default function MyAccountPage() {
   const { setAuthenticatedSession, user, refresh } = useAuth()
+  const dialog = useDialog()
+  const { pushToast } = useToast()
   const [profile, setProfile] = useState<MyProfile | null>(null)
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [activeTab, setActiveTab] = useState<TabKey>(() => tabFromHash(window.location.hash || '#/me/account'))
@@ -61,7 +65,7 @@ export default function MyAccountPage() {
       setSessions(sess.sessions)
       setLastLogin(sess.lastLogin || p.lastLogin || null)
     } catch (e: any) {
-      alert(e.message || 'Failed to load profile')
+      await dialog.alert({ title: 'Failed to load profile', message: e.message || 'Unable to load profile' })
     } finally {
       setLoading(false)
     }
@@ -76,18 +80,18 @@ export default function MyAccountPage() {
       const updated = await updateMyProfile({ displayName, preferences: prefs })
       setProfile(updated)
       setTimezonePref((updated.preferences?.timezone as string) || '')
-      alert('Profile updated')
+      pushToast({ title: 'Profile updated', tone: 'success' })
     } catch (e: any) {
-      alert(e.message || 'Save failed')
+      await dialog.alert({ title: 'Save failed', message: e.message || 'Unable to save profile' })
     } finally {
       setSavingProfile(false)
     }
   }
 
   async function handleChangePassword() {
-    if (!currentPassword.trim()) { alert('Enter your current password'); return }
-    if (!newPassword.trim()) { alert('Enter a new password'); return }
-    if (newPassword !== confirmPassword) { alert('Passwords do not match'); return }
+    if (!currentPassword.trim()) { await dialog.alert({ title: 'Current password required', message: 'Enter your current password' }); return }
+    if (!newPassword.trim()) { await dialog.alert({ title: 'New password required', message: 'Enter a new password' }); return }
+    if (newPassword !== confirmPassword) { await dialog.alert({ title: 'Passwords do not match', message: 'Confirm your new password to proceed' }); return }
     try {
       setSavingPassword(true)
       const res = await changeMyPassword({ currentPassword, newPassword })
@@ -96,9 +100,9 @@ export default function MyAccountPage() {
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
-      alert('Password changed. Sessions refreshed.')
+      pushToast({ title: 'Password changed', message: 'Sessions refreshed', tone: 'success' })
     } catch (e: any) {
-      alert(e.message || 'Password change failed')
+      await dialog.alert({ title: 'Password change failed', message: e.message || 'Unable to change password' })
     } finally {
       setSavingPassword(false)
     }
@@ -113,9 +117,9 @@ export default function MyAccountPage() {
       const sess = await listMySessions()
       setSessions(sess.sessions)
       setLastLogin(sess.lastLogin || profile?.lastLogin || null)
-      alert('Other sessions logged out')
+      pushToast({ title: 'Other sessions logged out', tone: 'success' })
     } catch (e: any) {
-      alert(e.message || 'Action failed')
+      await dialog.alert({ title: 'Action failed', message: e.message || 'Unable to log out sessions' })
     } finally {
       setSavingSessions(false)
     }

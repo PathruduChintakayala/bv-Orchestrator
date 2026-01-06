@@ -156,8 +156,19 @@ td {
   box-shadow: 0 10px 18px rgba(37, 99, 235, 0.18);
 }
 
+.btn-danger {
+  background: #b91c1c;
+  color: #ffffff;
+  border-color: #b91c1c;
+  box-shadow: 0 10px 18px rgba(185, 28, 28, 0.18);
+}
+
 .btn-primary:hover {
   background: #1d4ed8;
+}
+
+.btn-danger:hover {
+  background: #991b1b;
 }
 
 .btn-secondary {
@@ -169,6 +180,87 @@ td {
   background: #ffffff;
   border-color: #e2e8f0;
   color: #0f172a;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: grid;
+  place-items: center;
+  z-index: 1200;
+  padding: 16px;
+}
+
+.dialog-card {
+  width: min(520px, 100%);
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 14px 48px rgba(15, 23, 42, 0.25);
+  border: 1px solid #e2e8f0;
+}
+
+.dialog-content {
+  padding: 20px 22px 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.dialog-body {
+  margin: 0;
+  font-size: 14px;
+  color: #334155;
+  line-height: 1.6;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.toast-stack {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  gap: 10px;
+  z-index: 1300;
+}
+
+.toast {
+  min-width: 240px;
+  max-width: 360px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.toast-success {
+  border-color: #22c55e;
+  color: #166534;
+}
+
+.toast-danger {
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+.toast-info {
+  border-color: #3b82f6;
+  color: #1d4ed8;
 }
 
 .btn:focus-visible {

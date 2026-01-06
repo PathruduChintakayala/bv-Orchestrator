@@ -5,6 +5,8 @@ import type { Robot } from "../types/robot";
 import { createMachine, deleteMachine, fetchMachines, getMachine, regenerateMachineKey } from "../api/machines";
 import { fetchRobots } from "../api/robots";
 import { formatDisplayTime } from "../utils/datetime";
+import { useDialog } from "../components/DialogProvider";
+import { useToast } from "../components/ToastProvider";
 
 export default function MachinesPage() {
   const [items, setItems] = useState<Machine[]>([]);
@@ -17,6 +19,8 @@ export default function MachinesPage() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selected, setSelected] = useState<Machine | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+  const dialog = useDialog();
+  const { pushToast } = useToast();
 
   useEffect(() => {
     load();
@@ -76,12 +80,14 @@ export default function MachinesPage() {
 
   async function handleDelete(m: Machine) {
     if (m.robotCount > 0) return;
-    if (!confirm("Delete this machine?")) return;
+    const confirmed = await dialog.confirm({ title: "Delete this machine?", message: "This will remove the machine and any associated configuration.", tone: "danger", confirmLabel: "Delete" });
+    if (!confirmed) return;
     try {
       await deleteMachine(m.id);
       await load();
+      pushToast({ title: "Machine deleted", tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Delete failed");
+      await dialog.alert({ title: "Delete failed", message: e.message || "Unable to delete machine" });
     }
   }
 
@@ -249,6 +255,7 @@ function AddMachineModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const { pushToast } = useToast();
 
   const canSubmit = useMemo(() => name.trim().length > 0 && !saving, [name, saving]);
 
@@ -286,9 +293,9 @@ function AddMachineModal({
                 {createdKey || "(no key returned)"}
               </div>
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(createdKey || "");
-                  alert("Key copied to clipboard!");
+                onClick={async () => {
+                  await navigator.clipboard.writeText(createdKey || "");
+                  pushToast({ title: "Key copied", tone: "success" });
                 }}
                 style={{ ...secondaryBtn, padding: "10px", minWidth: "auto" }}
                 title="Copy to clipboard"
@@ -358,6 +365,8 @@ function MachineDetailsModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [regeneratedKey, setRegeneratedKey] = useState<string | null>(null);
+  const dialog = useDialog();
+  const { pushToast } = useToast();
 
   useEffect(() => {
     load();
@@ -383,23 +392,37 @@ function MachineDetailsModal({
 
   async function doDelete() {
     if (deleteDisabled) return;
-    if (!confirm("Delete this machine?")) return;
+    const confirmed = await dialog.confirm({
+      title: "Delete this machine?",
+      message: "This will remove the machine and any associated configuration.",
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
+    if (!confirmed) return;
     try {
       await deleteMachine(machine.id);
       await onDeleted();
+      pushToast({ title: "Machine deleted", tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Delete failed");
+      await dialog.alert({ title: "Delete failed", message: e.message || "Delete failed" });
     }
   }
 
   async function doRegenerateKey() {
     if (machine.mode !== "runner") return;
-    if (!confirm("Regenerate machine key? This will invalidate the current key and disconnect any running services.")) return;
+    const confirmed = await dialog.confirm({
+      title: "Regenerate machine key?",
+      message: "This will invalidate the current key and disconnect any running services.",
+      tone: "danger",
+      confirmLabel: "Regenerate",
+    });
+    if (!confirmed) return;
     try {
       const result = await regenerateMachineKey(machine.id);
       setRegeneratedKey(result.machineKey);
+      pushToast({ title: "Machine key regenerated", tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Regenerate failed");
+      await dialog.alert({ title: "Regenerate failed", message: e.message || "Regenerate failed" });
     }
   }
 
@@ -428,9 +451,9 @@ function MachineDetailsModal({
                 {regeneratedKey}
               </div>
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(regeneratedKey || "");
-                  alert("Key copied to clipboard!");
+                onClick={async () => {
+                  await navigator.clipboard.writeText(regeneratedKey || "");
+                  pushToast({ title: "Key copied", tone: "success" });
                 }}
                 style={{ ...secondaryBtn, padding: "10px", minWidth: "auto" }}
                 title="Copy to clipboard"

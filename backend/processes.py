@@ -148,20 +148,16 @@ def list_processes(search: Optional[str] = None, session=Depends(get_session)):
     return [process_to_out(p, session) for p in processes]
 
 
-def _get_process_by_identifier(session, identifier: str) -> Process:
-    """Resolve either numeric id or external_id to a Process.
-
-    Internal logic still uses numeric id; external_id is for API surface.
-    """
-    p = None
-    # Try numeric id first for backward compatibility
+def _get_process_by_external_id(session, external_id: str) -> Process:
+    """Resolve process by external_id only; reject numeric IDs at the boundary."""
     try:
-        pid = int(identifier)
-        p = session.exec(select(Process).where(Process.id == pid)).first()
+        int(external_id)
     except Exception:
-        p = None
-    if not p:
-        p = session.exec(select(Process).where(Process.external_id == identifier)).first()
+        pass
+    else:
+        raise HTTPException(status_code=400, detail="Process identifiers must be external_id (GUID)")
+
+    p = session.exec(select(Process).where(Process.external_id == external_id)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Process not found")
     return p
@@ -169,7 +165,7 @@ def _get_process_by_identifier(session, identifier: str) -> Process:
 
 @router.get("/{process_identifier}", dependencies=[Depends(get_current_user), Depends(require_permission("processes", "view"))])
 def get_process(process_identifier: str, session=Depends(get_session)):
-    p = _get_process_by_identifier(session, process_identifier)
+    p = _get_process_by_external_id(session, process_identifier)
     return process_to_out(p, session)
 
 
@@ -208,7 +204,7 @@ def create_process(payload: dict, request: Request, session=Depends(get_session)
 
 @router.put("/{process_identifier}", dependencies=[Depends(get_current_user), Depends(require_permission("processes", "edit"))])
 def update_process(process_identifier: str, payload: dict, request: Request, session=Depends(get_session), user=Depends(get_current_user)):
-    p = _get_process_by_identifier(session, process_identifier)
+    p = _get_process_by_external_id(session, process_identifier)
     before_out = process_to_out(p, session)
     old_package_id = p.package_id
 

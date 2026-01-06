@@ -5,8 +5,12 @@ import { fetchProcesses, createProcess, updateProcess, deleteProcess, upgradePro
 import { fetchPackages } from "../api/packages";
 import TriggerModal from "../components/TriggerModal";
 import { getProcessTypeLabel, getProcessTypeTone } from "../utils/processTypes";
+import { useDialog } from "../components/DialogProvider";
+import { useToast } from "../components/ToastProvider";
 
 export default function ProcessesPage() {
+  const dialog = useDialog();
+  const { pushToast } = useToast();
   const [items, setItems] = useState<Process[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,18 +81,21 @@ export default function ProcessesPage() {
       }
       closeModal();
       await load(search);
+      pushToast({ title: editing ? "Process updated" : "Process created", tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Save failed");
+      await dialog.alert({ title: "Save failed", message: e.message || "Unable to save process" });
     }
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this process?")) return;
+    const confirmed = await dialog.confirm({ title: "Delete this process?", message: "This action cannot be undone.", tone: "danger", confirmLabel: "Delete" });
+    if (!confirmed) return;
     try {
       await deleteProcess(id);
       await load(search);
+      pushToast({ title: "Process deleted", tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Delete failed");
+      await dialog.alert({ title: "Delete failed", message: e.message || "Unable to delete process" });
     }
   }
 
@@ -106,7 +113,13 @@ export default function ProcessesPage() {
 
   async function handleBulkDelete() {
     if (selected.length === 0) return
-    if (!confirm(`Delete ${selected.length} selected process(es)? This action cannot be undone.`)) return
+    const confirmed = await dialog.confirm({
+      title: `Delete ${selected.length} selected process(es)?`,
+      message: "This action cannot be undone.",
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
+    if (!confirmed) return
     let successCount = 0
     let errorMessages: string[] = []
     for (const id of selected) {
@@ -118,9 +131,9 @@ export default function ProcessesPage() {
       }
     }
     if (errorMessages.length > 0) {
-      alert(`Deleted ${successCount} process(es).\n\nErrors:\n${errorMessages.join('\n')}`)
+      await dialog.alert({ title: "Partial delete", message: `Deleted ${successCount} process(es).\n\nErrors:\n${errorMessages.join('\n')}` })
     } else {
-      alert(`Successfully deleted ${successCount} process(es).`)
+      pushToast({ title: `Deleted ${successCount} process(es)`, tone: "success" })
     }
     setSelected([])
     await load(search)
@@ -171,13 +184,19 @@ export default function ProcessesPage() {
 
   async function handleUpgradeToLatest(p: Process) {
     if (!p.upgradeAvailable || !p.package?.version || !p.latestVersion) return;
-    if (!confirm(`Upgrade ${p.name} from ${p.package.version} to ${p.latestVersion}?`)) return;
+    const confirmed = await dialog.confirm({
+      title: `Upgrade ${p.name}?`,
+      message: `Upgrade from ${p.package.version} to ${p.latestVersion}?`,
+      tone: "danger",
+      confirmLabel: "Upgrade",
+    });
+    if (!confirmed) return;
     try {
       await upgradeProcessToLatest(p.id);
       await load(search);
-      alert(`Upgraded to ${p.latestVersion}`);
+      pushToast({ title: `Upgraded to ${p.latestVersion}`, tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Upgrade failed");
+      await dialog.alert({ title: "Upgrade failed", message: e.message || "Unable to upgrade process" });
     }
   }
 
@@ -461,6 +480,7 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
 }
 
 function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Process | null; onCancel: () => void; onSave: (v: FormValues) => void; packages: import('../types/package').Package[] }) {
+  const dialog = useDialog();
   const [saving, setSaving] = useState(false);
   const [packageName, setPackageName] = useState<string | undefined>(initial?.package?.name);
   const [packageVersion, setPackageVersion] = useState<string | undefined>(initial?.package?.version);
@@ -537,12 +557,12 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
   }
 
   async function submit() {
-    if (!form.name.trim()) { alert('Name is required'); return; }
+    if (!form.name.trim()) { await dialog.alert({ title: 'Name is required', message: 'Enter a name to continue' }); return; }
     if (selectedPackage?.isBvpackage) {
-      if (!packageName || !packageVersion || !selectedPackage?.id) { alert('Package and version are required'); return; }
-      if (!entrypointName) { alert('Entrypoint is required'); return; }
+      if (!packageName || !packageVersion || !selectedPackage?.id) { await dialog.alert({ title: 'Package and version are required', message: 'Select a package and version before saving' }); return; }
+      if (!entrypointName) { await dialog.alert({ title: 'Entrypoint is required', message: 'Select an entrypoint before saving' }); return; }
     } else {
-      if (!form.scriptPath.trim()) { alert('Script Path is required'); return; }
+      if (!form.scriptPath.trim()) { await dialog.alert({ title: 'Script Path is required', message: 'Enter a script path to continue' }); return; }
     }
     try {
       setSaving(true);

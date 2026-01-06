@@ -4,14 +4,18 @@ import type React from 'react'
 import type { Queue } from '../types/queue'
 import { fetchQueues, fetchQueueStats, createQueue, updateQueue, deleteQueue } from '../api/queues'
 import { formatDisplayTime } from '../utils/datetime'
+import { useDialog } from '../components/DialogProvider'
+import { useToast } from '../components/ToastProvider'
 
 export default function QueuesPage() {
+  const dialog = useDialog()
+  const { pushToast } = useToast()
   const [items, setItems] = useState<Queue[]>([])
-  const [queueStats, setQueueStats] = useState<Record<number, any>>({})
+  const [queueStats, setQueueStats] = useState<Record<string, any>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [selected, setSelected] = useState<number[]>([])
+  const [selected, setSelected] = useState<string[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Queue | null>(null)
   const [selectedQueue, setSelectedQueue] = useState<Queue | null>(null)
@@ -20,7 +24,7 @@ export default function QueuesPage() {
   const [properties, setProperties] = useState('')
   const [completedItems, setCompletedItems] = useState(false)
   const [uncompletedItems, setUncompletedItems] = useState(false)
-  const [menuOpenId, setMenuOpenId] = useState<number | null>(null)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -40,12 +44,12 @@ export default function QueuesPage() {
       setLoading(true); setError(null)
       const queuesData = await fetchQueues(search ? { search } : undefined)
       setItems(queuesData)
-      // Fetch stats for all queues
-      const statsPromises = queuesData.map(q => fetchQueueStats(q.id).then(stats => ({ id: q.id, stats })).catch(() => ({ id: q.id, stats: null })))
+      // Fetch stats for all queues (keyed by externalId)
+      const statsPromises = queuesData.map(q => fetchQueueStats(q.externalId).then(stats => ({ externalId: q.externalId, stats })).catch(() => ({ externalId: q.externalId, stats: null })))
       const statsResults = await Promise.all(statsPromises)
-      const statsMap: Record<number, any> = {}
-      statsResults.forEach(({ id, stats }) => {
-        statsMap[id] = stats
+      const statsMap: Record<string, any> = {}
+      statsResults.forEach(({ externalId, stats }) => {
+        statsMap[externalId] = stats
       })
       setQueueStats(statsMap)
       setSelected([]) // clear selection on reload
@@ -61,21 +65,23 @@ export default function QueuesPage() {
   async function handleSave(values: FormValues) {
     try {
       if (editing) {
-        await updateQueue(editing.id, { description: values.description || undefined, maxRetries: values.maxRetries })
+        await updateQueue(editing.externalId, { description: values.description || undefined, maxRetries: values.maxRetries })
       } else {
         await createQueue({ name: values.name!, description: values.description || undefined, maxRetries: values.maxRetries, enforceUniqueReference: values.enforceUniqueReference })
       }
       closeModal(); await load()
-    } catch (e: any) { alert(e.message || 'Save failed') }
+      pushToast({ title: editing ? 'Queue updated' : 'Queue created', tone: 'success' })
+    } catch (e: any) { await dialog.alert({ title: 'Save failed', message: e.message || 'Unable to save queue' }) }
   }
 
-  async function handleDelete(id: number) {
-    if (!confirm('Delete this queue? This will permanently delete the queue and ALL its queue items. This action cannot be undone.')) return
-    try { await deleteQueue(id); await load() } catch (e: any) { alert(e.message || 'Delete failed') }
+  async function handleDelete(externalId: string) {
+    const confirmed = await dialog.confirm({ title: 'Delete this queue?', message: 'This will permanently delete the queue and ALL its queue items. This action cannot be undone.', tone: 'danger', confirmLabel: 'Delete' })
+    if (!confirmed) return
+    try { await deleteQueue(externalId); await load(); pushToast({ title: 'Queue deleted', tone: 'success' }) } catch (e: any) { await dialog.alert({ title: 'Delete failed', message: e.message || 'Unable to delete queue' }) }
   }
 
-  function getQueueMetrics(queueId: number) {
-    const stats = queueStats[queueId]
+  function getQueueMetrics(queueExternalId: string) {
+    const stats = queueStats[queueExternalId]
     if (!stats) return { inProgress: 0, remaining: 0, avgProcessingTime: 0, successful: 0, appExceptions: 0, bizExceptions: 0 }
     return {
       inProgress: stats.inProgress ?? 0,
@@ -93,35 +99,41 @@ export default function QueuesPage() {
     return `${minutes.toFixed(1)} min`
   }
 
-  function toggleSelect(id: number) {
-    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  function toggleSelect(externalId: string) {
+    setSelected(prev => prev.includes(externalId) ? prev.filter(x => x !== externalId) : [...prev, externalId])
   }
 
   function toggleSelectAll() {
     if (selected.length === items.length) {
       setSelected([])
     } else {
-      setSelected(items.map(q => q.id))
+      setSelected(items.map(q => q.externalId))
     }
   }
 
   async function handleBulkDelete() {
     if (selected.length === 0) return
-    if (!confirm(`Delete ${selected.length} selected queue(s)? This will permanently delete the queues and ALL their queue items. This action cannot be undone.`)) return
+    const confirmed = await dialog.confirm({
+      title: `Delete ${selected.length} selected queue(s)?`,
+      message: 'This will permanently delete the queues and ALL their queue items. This action cannot be undone.',
+      tone: 'danger',
+      confirmLabel: 'Delete',
+    })
+    if (!confirmed) return
     let successCount = 0
     let errorMessages: string[] = []
-    for (const id of selected) {
+    for (const externalId of selected) {
       try {
-        await deleteQueue(id)
+        await deleteQueue(externalId)
         successCount++
       } catch (e: any) {
-        errorMessages.push(`Failed to delete queue ${id}: ${e.message || 'Unknown error'}`)
+        errorMessages.push(`Failed to delete queue ${externalId}: ${e.message || 'Unknown error'}`)
       }
     }
     if (errorMessages.length > 0) {
-      alert(`Deleted ${successCount} queue(s).\n\nErrors:\n${errorMessages.join('\n')}`)
+      await dialog.alert({ title: 'Partial delete', message: `Deleted ${successCount} queue(s).\n\nErrors:\n${errorMessages.join('\n')}` })
     } else {
-      alert(`Successfully deleted ${successCount} queue(s).`)
+      pushToast({ title: `Deleted ${successCount} queue(s)`, tone: 'success' })
     }
     setSelected([])
     await load()
@@ -205,14 +217,14 @@ export default function QueuesPage() {
               </thead>
               <tbody>
                 {items.map(q => {
-                  const metrics = getQueueMetrics(q.id)
+                  const metrics = getQueueMetrics(q.externalId)
                   return (
-                    <tr key={q.id}>
+                    <tr key={q.internalId ?? q.externalId}>
                       <td>
-                        <input type="checkbox" checked={selected.includes(q.id)} onChange={() => toggleSelect(q.id)} />
+                        <input type="checkbox" checked={selected.includes(q.externalId)} onChange={() => toggleSelect(q.externalId)} />
                       </td>
                       <td>
-                        <a href={`#/queue-items?queueId=${q.id}`} style={{ color: '#2563eb', textDecoration: 'none' }}>{q.name}</a>
+                        <a href={`#/queue-items?queueId=${q.externalId}`} style={{ color: '#2563eb', textDecoration: 'none' }}>{q.name}</a>
                       </td>
                       <td data-align="right">{metrics.inProgress ?? 0}</td>
                       <td data-align="right">{metrics.remaining ?? 0}</td>
@@ -223,14 +235,14 @@ export default function QueuesPage() {
                       <td title={q.description || ''}>{(q.description || '').slice(0, 20)}{(q.description || '').length > 20 ? '...' : ''}</td>
                       <td data-type="actions">
                         <ActionMenu
-                          open={menuOpenId === q.id}
-                          onToggle={() => setMenuOpenId(menuOpenId === q.id ? null : q.id)}
+                          open={menuOpenId === q.externalId}
+                          onToggle={() => setMenuOpenId(menuOpenId === q.externalId ? null : q.externalId)}
                           onClose={() => setMenuOpenId(null)}
                           actions={[
-                            { label: "View Queue Items", onClick: () => window.location.hash = `#/queue-items?queueId=${q.id}` },
+                            { label: "View Queue Items", onClick: () => window.location.hash = `#/queue-items?queueId=${q.externalId}` },
                             { label: "View Details", onClick: () => setSelectedQueue(q) },
                             { label: "Edit Queue", onClick: () => openEdit(q) },
-                            { label: "Delete Queue", tone: "danger" as const, onClick: () => handleDelete(q.id) },
+                            { label: "Delete Queue", tone: "danger" as const, onClick: () => handleDelete(q.externalId) },
                           ]}
                         />
                       </td>
@@ -285,6 +297,7 @@ function DetailsModal({ queue, onClose }: { queue: Queue; onClose: () => void })
 }
 
 function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCancel: () => void; onSave: (v: FormValues) => void }) {
+  const dialog = useDialog()
   const [form, setForm] = useState<FormValues>({ name: initial?.name || '', description: initial?.description || '', maxRetries: initial?.maxRetries ?? 0, enforceUniqueReference: initial?.enforceUniqueReference ?? false })
   const [saving, setSaving] = useState(false)
 
@@ -296,7 +309,7 @@ function QueueModal({ initial, onCancel, onSave }: { initial: Queue | null; onCa
   }
 
   async function submit() {
-    if (!initial && !form.name?.trim()) { alert('Name is required'); return }
+    if (!initial && !form.name?.trim()) { await dialog.alert({ title: 'Name is required', message: 'Enter a queue name to continue' }); return }
     try { setSaving(true); await onSave(form) } finally { setSaving(false) }
   }
 

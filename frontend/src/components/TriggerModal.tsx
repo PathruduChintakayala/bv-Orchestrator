@@ -422,7 +422,7 @@ function TriggerForm({ form, setForm, processes, queues, robots, lockProcess, va
             <div>Queue</div>
             <select style={{ ...input, ...(errors.queueId ? { borderColor: '#dc2626' } : {}) }} value={form.queueId} onChange={e => setForm(f => ({ ...f, queueId: Number(e.target.value) }))}>
               <option value={0}>Select queue</option>
-              {queues.map(q => <option key={q.id} value={q.id}>{q.name}</option>)}
+              {queues.map(q => <option key={q.externalId} value={q.externalId}>{q.name}</option>)}
             </select>
             {errors.queueId && <span style={errorText}>{errors.queueId}</span>}
           </label>

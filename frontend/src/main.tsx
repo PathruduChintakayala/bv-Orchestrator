@@ -29,6 +29,8 @@ import AutomationsLayout from './components/AutomationsLayout'
 import InviteAcceptPage from './pages/InviteAcceptPage'
 import MyAccountPage from './pages/MyAccountPage'
 import CredentialStoresPage from './pages/CredentialStoresPage'
+import { DialogProvider } from './components/DialogProvider'
+import { ToastProvider } from './components/ToastProvider'
 
 function normalizeHash(h: string | null): string {
   const raw = (h || '#/').trim()
@@ -242,8 +244,12 @@ if (!rootEl) {
 }
 createRoot(rootEl as HTMLElement).render(
   <StrictMode>
-    <AuthProvider>
-      <Router />
-    </AuthProvider>
+    <ToastProvider>
+      <DialogProvider>
+        <AuthProvider>
+          <Router />
+        </AuthProvider>
+      </DialogProvider>
+    </ToastProvider>
   </StrictMode>,
 )

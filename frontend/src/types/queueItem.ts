@@ -15,7 +15,7 @@ export function formatQueueItemPriority(priority: number): string {
 
 export interface QueueItem {
   id: string
-  queueId: number
+  queueId: string
   reference?: string | null
   status: QueueItemStatus
   priority: number

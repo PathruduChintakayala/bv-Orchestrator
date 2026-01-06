@@ -5,8 +5,12 @@ import { fetchRobots, deleteRobot, createRobot, updateRobot } from "../api/robot
 import { formatDisplayTime } from "../utils/datetime";
 import { fetchMachines } from "../api/machines";
 import type { Machine } from "../types/machine";
+import { useDialog } from "../components/DialogProvider";
+import { useToast } from "../components/ToastProvider";
 
 export default function RobotsPage() {
+  const dialog = useDialog();
+  const { pushToast } = useToast();
   const [items, setItems] = useState<Robot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +62,7 @@ export default function RobotsPage() {
         const p = (values.credentialPassword || '').trim();
         if (u || p) {
           if (!u || !p) {
-            alert('Provide both username and password, or leave both empty');
+            await dialog.alert({ title: 'Credentials incomplete', message: 'Provide both username and password, or leave both empty' });
             return;
           }
           updatePayload.credential = { username: u, password: p };
@@ -80,18 +84,21 @@ export default function RobotsPage() {
       }
       closeModal();
       await load(search);
+      pushToast({ title: editing ? 'Robot updated' : 'Robot created', tone: 'success' });
     } catch (e: any) {
-      alert(e.message || "Save failed");
+      await dialog.alert({ title: "Save failed", message: e.message || "Unable to save robot" });
     }
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this robot?")) return;
+    const confirmed = await dialog.confirm({ title: "Delete this robot?", message: "This action cannot be undone.", tone: "danger", confirmLabel: "Delete" });
+    if (!confirmed) return;
     try {
       await deleteRobot(id);
       await load(search);
+      pushToast({ title: "Robot deleted", tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Delete failed");
+      await dialog.alert({ title: "Delete failed", message: e.message || "Unable to delete robot" });
     }
   }
 
@@ -168,6 +175,7 @@ export default function RobotsPage() {
 }
 
 function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCancel: () => void; onSave: (v: FormValues) => void }) {
+  const dialog = useDialog();
   const [form, setForm] = useState<FormValues>({
     name: initial?.name || "",
     status: initial?.status || "offline",
@@ -203,13 +211,13 @@ function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCa
   }
 
   async function submit() {
-    if (!initial && !form.name.trim()) { alert('Name is required'); return; }
-    if (initial && !form.name.trim()) { alert('Name is required'); return; }
+    if (!initial && !form.name.trim()) { await dialog.alert({ title: 'Name is required', message: 'Enter a name to continue' }); return; }
+    if (initial && !form.name.trim()) { await dialog.alert({ title: 'Name is required', message: 'Enter a name to continue' }); return; }
     if (!initial) {
       const u = (form.credentialUsername || '').trim();
       const p = (form.credentialPassword || '').trim();
       if ((u && !p) || (!u && p)) {
-        alert('Provide both username and password, or leave both empty');
+        await dialog.alert({ title: 'Credentials incomplete', message: 'Provide both username and password, or leave both empty' });
         return;
       }
     }
@@ -217,7 +225,7 @@ function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCa
       const u = (form.credentialUsername || '').trim();
       const p = (form.credentialPassword || '').trim();
       if ((u && !p) || (!u && p)) {
-        alert('Provide both username and password, or leave both empty');
+        await dialog.alert({ title: 'Credentials incomplete', message: 'Provide both username and password, or leave both empty' });
         return;
       }
     }

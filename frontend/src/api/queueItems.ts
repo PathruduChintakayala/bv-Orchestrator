@@ -32,9 +32,9 @@ function toClient(q: any): QueueItem {
   }
 }
 
-export async function fetchQueueItems(params: { queueId: number; status?: QueueItemStatus }): Promise<QueueItem[]> {
+export async function fetchQueueItems(params: { queueId: string; status?: QueueItemStatus }): Promise<QueueItem[]> {
   const url = new URL('/api/queue-items/', window.location.origin)
-  url.searchParams.set('queue_id', String(params.queueId))
+  url.searchParams.set('queue_external_id', params.queueId)
   if (params?.status) url.searchParams.set('status', params.status)
   const res = await fetch(url.toString(), { headers: authHeaders() })
   if (!res.ok) throw new Error(await res.text())
@@ -48,9 +48,9 @@ export async function fetchQueueItem(id: string): Promise<QueueItem> {
   return toClient(await res.json())
 }
 
-export async function createQueueItem(payload: { queueId: number; reference?: string; priority?: number; payload?: Record<string, unknown> }): Promise<QueueItem> {
+export async function createQueueItem(payload: { queueId: string; reference?: string; priority?: number; payload?: Record<string, unknown> }): Promise<QueueItem> {
   const body: any = {
-    queue_id: payload.queueId,
+    queue_external_id: payload.queueId,
     reference: payload.reference ?? null,
     priority: payload.priority ?? 0,
     payload: payload.payload ?? null,

@@ -7,6 +7,8 @@ import { fetchRobots } from "../api/robots";
 import { getProcessTypeLabel, getProcessTypeTone } from "../utils/processTypes";
 import { formatDisplayTime } from "../utils/datetime";
 import React from "react";
+import { useDialog } from "../components/DialogProvider";
+import { useToast } from "../components/ToastProvider";
 
 export default function JobsPage() {
   const [items, setItems] = useState<Job[]>([]);
@@ -29,6 +31,8 @@ export default function JobsPage() {
   const [processesState, setProcessesState] = useState<FetchState<import('../types/processes').Process[]>>({ status: 'idle', data: [] });
   const [robotsState, setRobotsState] = useState<FetchState<import('../types/robot').Robot[]>>({ status: 'idle', data: [] });
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+  const dialog = useDialog();
+  const { pushToast } = useToast();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -128,8 +132,9 @@ export default function JobsPage() {
       await createJob(payload);
       closeModal();
       await load();
+      pushToast({ title: "Job started", tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Trigger failed");
+      await dialog.alert({ title: "Trigger failed", message: e.message || "Unable to start job" });
     }
   }
 
@@ -137,8 +142,9 @@ export default function JobsPage() {
     try {
       await stopJob(id);
       await load();
+      pushToast({ title: "Job stop requested", tone: "info" });
     } catch (e: any) {
-      alert(e.message || "Stop failed");
+      await dialog.alert({ title: "Stop failed", message: e.message || "Unable to stop job" });
     }
   }
 
@@ -146,9 +152,22 @@ export default function JobsPage() {
     try {
       await killJob(id);
       await load();
+      pushToast({ title: "Job kill requested", tone: "danger" });
     } catch (e: any) {
-      alert(e.message || "Kill failed");
+      await dialog.alert({ title: "Kill failed", message: e.message || "Unable to kill job" });
     }
+  }
+
+  async function confirmKill(job: Job) {
+    const confirmed = await dialog.confirm({
+      title: "Force terminate this job?",
+      message: "This sends a KILL signal to the running job. Any in-flight work may be lost.",
+      tone: "danger",
+      confirmLabel: "Kill job",
+      cancelLabel: "Cancel",
+    });
+    if (!confirmed) return;
+    await handleKill(job.id);
   }
 
   function duration(j: Job): string {
@@ -340,7 +359,7 @@ export default function JobsPage() {
                           { label: "Restart", onClick: () => { void handleTrigger({ processId: j.processId, robotId: j.robotId ?? undefined, parameters: null }); } },
                           { label: "View logs for this job", onClick: () => { if (j.executionId) window.location.hash = `#/automations/logs?jobId=${j.id}&executionId=${j.executionId}&processId=${j.processId}`; }, disabled: !j.executionId },
                           { label: "View logs for this process", onClick: () => { window.location.hash = `#/automations/logs?processId=${j.processId}`; } },
-                          ...(j.status === 'running' || j.status === 'pending' ? [{ label: "Kill", tone: "danger" as const, onClick: () => { if (confirm('Force terminate this job?')) { void handleKill(j.id); } } }] : []),
+                          ...(j.status === 'running' || j.status === 'pending' ? [{ label: "Kill", tone: "danger" as const, onClick: () => { void confirmKill(j); } }] : []),
                         ]}
                       />
                     </td>
@@ -533,6 +552,7 @@ function TriggerModal({ processesState, robotsState, onCancel, onSave, defaultPr
   const [form, setForm] = useState<FormValues>({ processId: defaultProcessId, robotId: undefined });
   const [saving, setSaving] = useState(false);
   const currentProcess = useMemo(() => processes.find(p => p.id === form.processId) || null, [processes, form.processId]);
+  const dialog = useDialog();
 
   useEffect(() => {
     if (!form.processId && processes.length > 0) {
@@ -560,7 +580,7 @@ function TriggerModal({ processesState, robotsState, onCancel, onSave, defaultPr
 
   async function submit() {
     if (!form.processId) {
-      alert('Process is required')
+      await dialog.alert({ title: 'Missing process', message: 'Process is required' })
       return
     }
 

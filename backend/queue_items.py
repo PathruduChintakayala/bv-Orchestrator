@@ -19,6 +19,21 @@ router = APIRouter(prefix="/queue-items", tags=["queue-items"])
 VISIBILITY_TIMEOUT_SECONDS = 300
 
 
+def _get_queue_internal_id(session: Session, queue_external_id: str) -> int:
+    """Resolve queue by external_id and return its internal id."""
+    try:
+        int(queue_external_id)
+    except Exception:
+        pass
+    else:
+        raise HTTPException(status_code=400, detail="Queue identifiers must be external_id (GUID)")
+
+    queue = session.exec(select(Queue).where(Queue.external_id == queue_external_id)).first()
+    if not queue:
+        raise HTTPException(status_code=404, detail="Queue not found")
+    return queue.id
+
+
 def get_runtime_auth(
     request: Request,
     session = Depends(get_session),
@@ -73,7 +88,7 @@ def get_runtime_auth(
 
 
 class CreateQueueItemRequest(BaseModel):
-    queue_id: int
+    queue_external_id: str
     reference: Optional[str] = None
     priority: int = 1  # Default NORMAL priority
     payload: Optional[Any] = None
@@ -121,10 +136,15 @@ def utcnow_iso() -> str:
     return datetime.utcnow().isoformat()
 
 
-def _queue_item_to_out(item: QueueItem, tz: str) -> dict:
+def _queue_item_to_out(item: QueueItem, tz: str, session: Optional[Session] = None, queue_external_id: Optional[str] = None) -> dict:
+    q_external = queue_external_id
+    if q_external is None and session is not None:
+        q = session.get(Queue, item.queue_id) if getattr(item, "queue_id", None) is not None else None
+        q_external = getattr(q, "external_id", None)
     return {
         "id": item.id,
-        "queue_id": item.queue_id,
+        "queue_id": q_external,
+        "queue_external_id": q_external,
         "reference": item.reference,
         "status": item.status,
         "priority": item.priority,
@@ -145,35 +165,38 @@ def _queue_item_to_out(item: QueueItem, tz: str) -> dict:
 def list_items(
     session: Session = Depends(get_session),
     user=Depends(get_current_user),
-    queue_id: Optional[int] = Query(default=None),
+    queue_external_id: Optional[str] = Query(default=None),
     status: Optional[str] = Query(default=None),
 ):
-    if queue_id is None:
-        raise HTTPException(status_code=400, detail="queue_id parameter is required")
+    if queue_external_id is None:
+        raise HTTPException(status_code=400, detail="queue_external_id parameter is required")
+    queue_id = _get_queue_internal_id(session, queue_external_id)
+
     q = select(QueueItem).where(QueueItem.queue_id == queue_id)
     if status:
         q = q.where(QueueItem.status == status)
     items = session.exec(q).all()
     tz = get_display_timezone(session)
-    return [_queue_item_to_out(it, tz) for it in items]
+    return [_queue_item_to_out(it, tz, session, queue_external_id) for it in items]
 
 
 # IMPORTANT: /next must be defined BEFORE /{item_id} to avoid routing conflict
 @router.get("/next")
 def get_next_item(
     queue_name: Optional[str] = Query(None),
-    queue_id: Optional[int] = Query(None),
+    queue_external_id: Optional[str] = Query(None),
     session: Session = Depends(get_session),
     auth=Depends(get_runtime_auth)
 ):
-    if not queue_name and queue_id is None:
-        raise HTTPException(status_code=400, detail="queue_name or queue_id required")
-    
-    if queue_id is None:
+    if not queue_name and queue_external_id is None:
+        raise HTTPException(status_code=400, detail="queue_name or queue_external_id required")
+
+    if queue_external_id is None:
         queue = session.exec(select(Queue).where(Queue.name == queue_name)).first()
         if not queue:
             raise HTTPException(status_code=404, detail="Queue not found")
-        queue_id = queue.id
+        queue_external_id = queue.external_id
+    queue_id = _get_queue_internal_id(session, queue_external_id)
 
     # Inline abandonment: mark long-stuck items as ABANDONED before claiming.
     abandon_cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
@@ -256,25 +279,23 @@ def get_item(item_id: str, session: Session = Depends(get_session), user=Depends
     if not obj:
         raise HTTPException(status_code=404, detail="Queue item not found")
     tz = get_display_timezone(session)
-    return _queue_item_to_out(obj, tz)
+    return _queue_item_to_out(obj, tz, session)
 
 
 @router.post("/", response_model=QueueItem, status_code=201, dependencies=[Depends(require_permission("queue_items", "create"))])
 def create_item(payload: CreateQueueItemRequest, request: Request, session: Session = Depends(get_session), user=Depends(get_current_user)):
-    # require queue exists
-    queue = session.get(Queue, payload.queue_id)
-    if not queue:
-        raise HTTPException(status_code=400, detail="Queue does not exist")
+    queue_id = _get_queue_internal_id(session, payload.queue_external_id)
+    queue = session.get(Queue, queue_id)
     
     # enforce unique reference if enabled for this queue
     if queue.enforce_unique_reference and payload.reference:
-        existing = session.exec(select(QueueItem).where(QueueItem.queue_id == payload.queue_id, QueueItem.reference == payload.reference)).first()
+        existing = session.exec(select(QueueItem).where(QueueItem.queue_id == queue_id, QueueItem.reference == payload.reference)).first()
         if existing:
             raise HTTPException(status_code=409, detail="Reference already exists in this queue.")
     
     now = utcnow_iso()
     obj = QueueItem(
-        queue_id=payload.queue_id,
+        queue_id=queue_id,
         reference=payload.reference,
         status="NEW",
         priority=payload.priority if payload.priority is not None else 1,
@@ -296,11 +317,11 @@ def create_item(payload: CreateQueueItemRequest, request: Request, session: Sess
         raise HTTPException(status_code=409, detail="Reference already exists in this queue.")
     session.refresh(obj)
     try:
-        log_event(session, action="queue_item.create", entity_type="queue_item", entity_id=obj.id, entity_name=str(obj.reference or obj.id), before=None, after={"queue_id": obj.queue_id, "status": obj.status}, metadata=None, request=request, user=user)
+        log_event(session, action="queue_item.create", entity_type="queue_item", entity_id=obj.id, entity_name=str(obj.reference or obj.id), before=None, after={"queue_id": obj.queue_id, "queue_external_id": queue.external_id, "status": obj.status}, metadata=None, request=request, user=user)
     except Exception:
         pass
     tz = get_display_timezone(session)
-    return _queue_item_to_out(obj, tz)
+    return _queue_item_to_out(obj, tz, session, queue.external_id)
 
 
 @router.put("/{item_id}", response_model=QueueItem, dependencies=[Depends(require_permission("queue_items", "edit"))])
@@ -335,7 +356,8 @@ def update_item(item_id: str, payload: UpdateQueueItemRequest, request: Request,
     except Exception:
         pass
     tz = get_display_timezone(session)
-    return _queue_item_to_out(obj, tz)
+    queue_external_id = getattr(queue, "external_id", None) if queue else None
+    return _queue_item_to_out(obj, tz, session, queue_external_id)
 
 
 @router.delete("/{item_id}", status_code=204, dependencies=[Depends(require_permission("queue_items", "delete"))])

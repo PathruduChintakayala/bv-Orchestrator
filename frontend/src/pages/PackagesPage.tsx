@@ -4,8 +4,12 @@ import { createPortal } from "react-dom";
 import type { Package } from "../types/package";
 import { fetchPackages, uploadPackage, deletePackage, downloadPackageVersion } from "../api/packages";
 import { formatDisplayTime } from "../utils/datetime";
+import { useDialog } from "../components/DialogProvider";
+import { useToast } from "../components/ToastProvider";
 
 export default function PackagesPage() {
+  const dialog = useDialog();
+  const { pushToast } = useToast();
   const [packages, setPackages] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,8 +56,9 @@ export default function PackagesPage() {
       await uploadPackage(values.file!);
       closeUpload();
       await load(search);
+      pushToast({ title: "Package uploaded", tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Upload failed");
+      await dialog.alert({ title: "Upload failed", message: e.message || "Unable to upload package" });
     }
   }
 
@@ -95,13 +100,15 @@ export default function PackagesPage() {
   }
 
   async function deleteSingle(p: Package, active: boolean) {
-    if (active) { alert("Cannot delete an active version"); return; }
-    if (!confirm(`Delete version ${p.version} of ${p.name}?`)) return;
+    if (active) { await dialog.alert({ title: "Active version", message: "Cannot delete an active version" }); return; }
+    const confirmed = await dialog.confirm({ title: `Delete version ${p.version}?`, message: `Delete version ${p.version} of ${p.name}?`, tone: "danger", confirmLabel: "Delete" });
+    if (!confirmed) return;
     try {
       await deletePackage(p.id);
       await load(search);
+      pushToast({ title: "Version deleted", tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Delete failed");
+      await dialog.alert({ title: "Delete failed", message: e.message || "Unable to delete version" });
     }
   }
 
@@ -110,26 +117,29 @@ export default function PackagesPage() {
     const inactive = versions.filter(v => !isActiveVersion(v) && selectedIds.has(v.id));
     if (inactive.length === 0) {
       if (selectedIds.size > 0) {
-        alert("Selected versions are active and cannot be deleted.");
+        await dialog.alert({ title: "Active versions", message: "Selected versions are active and cannot be deleted." });
       } else {
-        alert("Select at least one inactive version to delete.");
+        await dialog.alert({ title: "No selection", message: "Select at least one inactive version to delete." });
       }
       return;
     }
-    if (!confirm(`Delete ${inactive.length} inactive version(s)?`)) return;
+    const confirmed = await dialog.confirm({ title: `Delete ${inactive.length} inactive version(s)?`, message: "This action cannot be undone.", tone: "danger", confirmLabel: "Delete" });
+    if (!confirmed) return;
     let hadError = false;
     for (const v of inactive) {
       try {
         await deletePackage(v.id);
       } catch (e: any) {
         hadError = true;
-        alert(e.message || `Failed to delete ${v.version}`);
+        await dialog.alert({ title: "Delete failed", message: e.message || `Failed to delete ${v.version}` });
       }
     }
     setSelectedIds(new Set());
     await load(search);
     if (hadError) {
-      alert("Some versions could not be deleted.");
+      await dialog.alert({ title: "Partial delete", message: "Some versions could not be deleted." });
+    } else {
+      pushToast({ title: `Deleted ${inactive.length} version(s)`, tone: "success" });
     }
   }
 
@@ -137,23 +147,26 @@ export default function PackagesPage() {
     const versions = versionsFor(name);
     const inactive = versions.filter(v => !isActiveVersion(v));
     if (inactive.length === 0) {
-      alert("No inactive versions to delete.");
+      await dialog.alert({ title: "No inactive versions", message: "No inactive versions to delete." });
       return;
     }
-    if (!confirm(`Delete all ${inactive.length} inactive version(s)?`)) return;
+    const confirmed = await dialog.confirm({ title: `Delete all ${inactive.length} inactive version(s)?`, message: "This action cannot be undone.", tone: "danger", confirmLabel: "Delete" });
+    if (!confirmed) return;
     let hadError = false;
     for (const v of inactive) {
       try {
         await deletePackage(v.id);
       } catch (e: any) {
         hadError = true;
-        alert(e.message || `Failed to delete ${v.version}`);
+        await dialog.alert({ title: "Delete failed", message: e.message || `Failed to delete ${v.version}` });
       }
     }
     setSelectedIds(new Set());
     await load(search);
     if (hadError) {
-      alert("Some versions could not be deleted.");
+      await dialog.alert({ title: "Partial delete", message: "Some versions could not be deleted." });
+    } else {
+      pushToast({ title: `Deleted ${inactive.length} version(s)`, tone: "success" });
     }
   }
 
@@ -287,14 +300,17 @@ function VersionsModal({
   onBulkDelete: (name: string) => Promise<void>;
   onDeleteInactive: (name: string) => Promise<void>;
 }) {
+  const dialog = useDialog();
+  const { pushToast } = useToast();
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
 
   async function handleDownload(p: Package) {
     const filename = `${p.name}-${p.version}.bvpackage`;
     try {
       await downloadPackageVersion({ packageId: p.id, version: p.version, filename });
+      pushToast({ title: "Download started", tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Download failed");
+      await dialog.alert({ title: "Download failed", message: e.message || "Unable to download package" });
     }
   }
   return (
@@ -373,6 +389,7 @@ function VersionsModal({
 }
 
 function UploadModal({ onCancel, onSave }: { onCancel: () => void; onSave: (v: UploadValues) => void }) {
+  const dialog = useDialog();
   const [form, setForm] = useState<UploadValues>({ file: null });
   const [saving, setSaving] = useState(false);
 
@@ -389,7 +406,7 @@ function UploadModal({ onCancel, onSave }: { onCancel: () => void; onSave: (v: U
 
   async function submit() {
     const err = validate();
-    if (err) { alert(err); return; }
+    if (err) { await dialog.alert({ title: 'Upload blocked', message: err }); return; }
     try {
       setSaving(true);
       await onSave(form);

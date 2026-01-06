@@ -4,9 +4,13 @@ import { formatQueueItemPriority, queueItemPriorityLabels } from '../types/queue
 import { fetchQueueItems, createQueueItem, updateQueueItem } from '../api/queueItems'
 import { formatDisplayTime } from '../utils/datetime'
 import { fetchQueues } from '../api/queues'
+import { useDialog } from '../components/DialogProvider'
+import { useToast } from '../components/ToastProvider'
 
 export default function QueueItemsPage() {
-  const [queueId, setQueueId] = useState<number | null>(null)
+  const dialog = useDialog()
+  const { pushToast } = useToast()
+  const [queueId, setQueueId] = useState<string | null>(null)
   const [items, setItems] = useState<QueueItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -22,7 +26,7 @@ export default function QueueItemsPage() {
     const hash = window.location.hash || '#/queue-items'
     const url = new URL(hash.replace('#', ''), 'http://localhost')
     const qid = url.searchParams.get('queueId')
-    const newQueueId = qid ? Number(qid) : null
+    const newQueueId = qid || null
     setQueueId(newQueueId)
 
     if (!newQueueId) {
@@ -33,7 +37,7 @@ export default function QueueItemsPage() {
 
     // Fetch the specific queue info
     fetchQueues({}).then(queues => {
-      const queue = queues.find(q => q.id === newQueueId)
+      const queue = queues.find(q => q.externalId === newQueueId)
       setCurrentQueue(queue || null)
       if (!queue) {
         setError('Queue not found.')
@@ -69,7 +73,7 @@ export default function QueueItemsPage() {
   async function handleCreate(values: FormValues) {
     try {
       await createQueueItem({ queueId: queueId!, reference: values.reference || undefined, priority: values.priority ?? 0, payload: values.payload || undefined })
-      closeModal(); await load()
+      closeModal(); await load(); pushToast({ title: 'Queue item created', tone: 'success' })
     } catch (e: any) {
       // Error is handled in the modal
       throw e
@@ -91,7 +95,13 @@ export default function QueueItemsPage() {
 
   async function handleBulkDelete() {
     if (selected.length === 0) return
-    if (!confirm(`Soft delete ${selected.length} selected item(s)? They will be marked as deleted and cannot be modified.`)) return
+    const confirmed = await dialog.confirm({
+      title: `Soft delete ${selected.length} selected item(s)?`,
+      message: 'They will be marked as deleted and cannot be modified.',
+      tone: 'danger',
+      confirmLabel: 'Delete',
+    })
+    if (!confirmed) return
     let successCount = 0
     let errorMessages: string[] = []
     for (const id of selected) {
@@ -103,9 +113,9 @@ export default function QueueItemsPage() {
       }
     }
     if (errorMessages.length > 0) {
-      alert(`Deleted ${successCount} item(s).\n\nErrors:\n${errorMessages.join('\n')}`)
+      await dialog.alert({ title: 'Partial delete', message: `Deleted ${successCount} item(s).\n\nErrors:\n${errorMessages.join('\n')}` })
     } else {
-      alert(`Successfully deleted ${successCount} item(s).`)
+      pushToast({ title: `Deleted ${successCount} item(s)`, tone: 'success' })
     }
     setSelected([])
     await load()
@@ -251,6 +261,7 @@ function StatusBadge({ status }: { status: QueueItemStatus }) {
 }
 
 function NewItemModal({ onCancel, onSave }: { onCancel: () => void; onSave: (v: FormValues) => Promise<void> }) {
+  const dialog = useDialog()
   const [form, setForm] = useState<FormValues>({ reference: '', priority: 0, payloadText: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -261,14 +272,14 @@ function NewItemModal({ onCancel, onSave }: { onCancel: () => void; onSave: (v: 
     if (name === 'reference') setError(null) // Clear error when reference changes
   }
 
-  function parsePayload(): Record<string, unknown> | undefined {
+  async function parsePayload(): Promise<Record<string, unknown> | undefined> {
     const t = (form.payloadText || '').trim()
     if (!t) return undefined
-    try { return JSON.parse(t) } catch { alert('Payload must be valid JSON'); return undefined }
+    try { return JSON.parse(t) } catch { await dialog.alert({ title: 'Invalid JSON', message: 'Payload must be valid JSON' }); return undefined }
   }
 
   async function submit() {
-    const payload = parsePayload()
+    const payload = await parsePayload()
     if (form.payloadText && !payload) return
     setError(null)
     try { setSaving(true); await onSave({ reference: form.reference, priority: form.priority, payload }); } catch (e: any) { setError(e.message || 'Create failed') } finally { setSaving(false) }

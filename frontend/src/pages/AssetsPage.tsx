@@ -2,6 +2,8 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { Asset, AssetType } from "../types/assets";
 import { fetchAssets, createAsset, updateAsset, deleteAsset } from "../api/assets";
+import { useDialog } from "../components/DialogProvider";
+import { useToast } from "../components/ToastProvider";
 
 const ASSET_TYPE_OPTIONS: { value: AssetType; label: string }[] = [
   { value: 'text', label: 'Text' },
@@ -16,6 +18,8 @@ function formatAssetType(t: AssetType): string {
 }
 
 export default function AssetsPage() {
+  const dialog = useDialog();
+  const { pushToast } = useToast();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,19 +95,22 @@ export default function AssetsPage() {
       }
       closeModal();
       await load(search);
+      pushToast({ title: editing ? "Asset updated" : "Asset created", tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Save failed");
+      await dialog.alert({ title: "Save failed", message: e.message || "Unable to save asset" });
     }
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this asset?")) return;
+    const confirmed = await dialog.confirm({ title: "Delete this asset?", message: "This action cannot be undone.", tone: "danger", confirmLabel: "Delete" });
+    if (!confirmed) return;
     try {
       await deleteAsset(id);
       setSelected(prev => prev.filter(x => x !== id));
       await load(search);
+      pushToast({ title: "Asset deleted", tone: "success" });
     } catch (e: any) {
-      alert(e.message || "Delete failed");
+      await dialog.alert({ title: "Delete failed", message: e.message || "Unable to delete asset" });
     }
   }
 
@@ -121,7 +128,8 @@ export default function AssetsPage() {
 
   async function handleBulkDelete() {
     if (selected.length === 0) return;
-    if (!confirm(`Delete ${selected.length} selected asset(s)? This action cannot be undone.`)) return;
+    const confirmed = await dialog.confirm({ title: `Delete ${selected.length} selected asset(s)?`, message: "This action cannot be undone.", tone: "danger", confirmLabel: "Delete" });
+    if (!confirmed) return;
     let successCount = 0;
     let errorMessages: string[] = [];
     for (const id of selected) {
@@ -133,9 +141,9 @@ export default function AssetsPage() {
       }
     }
     if (errorMessages.length > 0) {
-      alert(`Deleted ${successCount} asset(s).\n\nErrors:\n${errorMessages.join('\n')}`);
+      await dialog.alert({ title: "Partial delete", message: `Deleted ${successCount} asset(s).\n\nErrors:\n${errorMessages.join('\n')}` });
     } else {
-      alert(`Successfully deleted ${successCount} asset(s).`);
+      pushToast({ title: `Deleted ${successCount} asset(s)`, tone: "success" });
     }
     setSelected([]);
     await load(search);
@@ -352,6 +360,7 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
 }
 
 function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCancel: () => void; onSave: (v: FormValues) => void }) {
+  const dialog = useDialog();
   const [form, setForm] = useState<FormValues>({
     name: initial?.name || "",
     type: (initial?.type as AssetType) || "text",
@@ -389,16 +398,16 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
   }
 
   async function submit() {
-    if (!form.name.trim()) { alert('Name is required'); return; }
-    if (!form.type) { alert('Type is required'); return; }
+    if (!form.name.trim()) { await dialog.alert({ title: 'Name is required', message: 'Enter a name to continue' }); return; }
+    if (!form.type) { await dialog.alert({ title: 'Type is required', message: 'Select an asset type to continue' }); return; }
     const valueError = validateValue(form.value, form.type);
     if (valueError) { setErrors(prev => ({ ...prev, value: valueError })); return; }
     if (form.type === 'credential') {
-      if (!(form.credUser || '').trim()) { alert('Username is required'); return; }
+      if (!(form.credUser || '').trim()) { await dialog.alert({ title: 'Username is required', message: 'Enter a username for this credential' }); return; }
       // Require password both on create and edit for credentials
-      if (!(form.credPass || '').trim()) { alert('Password is required'); return; }
+      if (!(form.credPass || '').trim()) { await dialog.alert({ title: 'Password is required', message: 'Enter a password for this credential' }); return; }
     } else {
-      if (!form.value.trim()) { alert('Value is required'); return; }
+      if (!form.value.trim()) { await dialog.alert({ title: 'Value is required', message: 'Enter a value to continue' }); return; }
     }
     try {
       setSaving(true);
