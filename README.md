@@ -1,402 +1,114 @@
 # BV Orchestrator
 
-A comprehensive Robotic Process Automation (RPA) orchestration platform that manages robots, processes, jobs, queues, triggers, and automation packages. Built with FastAPI (backend) and React (frontend), providing a complete solution for automating business processes.
+Primary system documentation for the BV Orchestrator platform. This document is written for platform architects, backend engineers, UI engineers, and future maintainers. It focuses on how the system works end to end, not just the API surface.
 
-## Table of Contents
+## 1. Platform Overview
+- **Responsibility:** Coordinate end-to-end automation execution across RPA robots and agent-style runtimes. Manage packages, processes, jobs, queues, triggers, assets, credentials, users, and permissions. Expose REST APIs for UI, SDK, and runner interactions. Persist system-of-record state, audit activity, and enforce access controls.
+- **Out of Scope:** Does not execute automations itself (execution happens in runners/agents). Does not provide low-level desktop/web automation SDKs (those live in the SDK/runtime). Does not manage infrastructure provisioning for runners. Does not provide observability backends beyond emitted logs/audit entries.
+- **Fit in the stack:**
+  - **Orchestrator (this repo):** Control plane, APIs, scheduling, state, RBAC, assets, queues, triggers, audit.
+  - **Runner/Agent:** Data plane that pulls jobs, executes package entrypoints, streams logs/heartbeats, reports results.
+  - **SDK:** Used by package authors; defines entrypoints, serialization, and runner protocol expectations.
+  - **Runtime:** Executes BV packages or legacy scripts; communicates with orchestrator through the runner protocol.
 
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Core Concepts](#core-concepts)
-- [API Documentation](#api-documentation)
-- [Frontend Guide](#frontend-guide)
-- [Usage Guide](#usage-guide)
-- [Security & Authentication](#security--authentication)
-- [Development](#development)
-- [Troubleshooting](#troubleshooting)
-
-## Overview
-
-BV Orchestrator is an enterprise-grade RPA platform that enables you to:
-
-- **Manage Automation Packages**: Upload and version control `.bvpackage` files containing automation scripts
-- **Define Processes**: Create reusable process definitions that reference package entrypoints
-- **Execute Jobs**: Run automation jobs on distributed robots
-- **Queue Management**: Process work items through configurable queues
-- **Scheduled Triggers**: Automate job execution with time-based (cron) or queue-based triggers
-- **Robot Management**: Register and monitor robots that execute automation tasks
-- **Access Control**: Role-based access control (RBAC) for fine-grained permissions
-- **Audit Logging**: Comprehensive audit trail of all system activities
-- **Asset Management**: Store and manage secrets, credentials, and configuration values
-
-## Features
-
-### Core Functionality
-
-- **Package Management**
-  - Upload `.bvpackage` files with validation
-  - Support for multiple package versions
-  - Entrypoint discovery and signature inspection
-  - Package integrity verification (SHA256 hashing)
-  - Preflight checks before upload
-
-- **Process Management**
-  - Define processes that reference package entrypoints
-  - Support for both BV packages and legacy packages
-  - Process versioning
-  - Active/inactive status management
-
-- **Job Execution**
-  - Create jobs from processes
-  - Job lifecycle: pending → running → completed/failed/canceled
-  - Parameter passing to automation scripts
-  - Result and error message capture
-  - Execution logs tracking
-
-- **Queue System**
-  - Create named queues for work item processing
-  - Queue items with status: NEW → IN_PROGRESS → DONE/FAILED
-  - Reference-based deduplication
-  - Retry mechanism with max retries
-  - Batch processing support
-
-- **Trigger System**
-  - **Time Triggers**: Cron-based scheduling with timezone support
-  - **Queue Triggers**: Automatic job creation when queue items are available
-  - Enable/disable triggers dynamically
-  - Trigger execution history
-
-- **Robot Management**
-  - Register robots via machine keys
-  - Robot heartbeat monitoring
-  - Online/offline status tracking
-  - Machine binding and signature verification
-  - Unattended execution with credential assets
-
-- **Machine Management**
-  - Create machines in `runner` or `agent` mode
-  - Machine key authentication (one-time display)
-  - Machine signature binding for security
-  - Connection status tracking
-
-- **Access Control (RBAC)**
-  - Role-based permissions system
-  - Granular permissions per artifact (view/create/edit/delete)
-  - User-role assignments
-  - Default roles: Administrator, Read Only
-
-- **Audit System**
-  - Comprehensive event logging
-  - Filterable audit trail
-  - Before/after state capture
-  - User action tracking
-
-- **Settings Management**
-  - Grouped settings (general, security, jobs, email, logging)
-  - Type-aware serialization (string, int, bool, json)
-  - Audited changes
-
-- **Asset Management**
-  - Store text, integers, booleans
-  - Secret management (hashed storage)
-  - Credential storage (username/password)
-  - Secure value masking in API responses
-
-- **SDK Authentication**
-  - Development-time authentication flow
-  - 5-minute session windows
-  - Restricted SDK token permissions
-
-- **Dashboard**
-  - Real-time system overview
-  - Robot status monitoring
-  - Job statistics
-  - Recent job history
-
-## Architecture
-
-### Backend (FastAPI)
-
-- **Framework**: FastAPI with SQLModel (SQLAlchemy)
-- **Database**: SQLite (development), easily configurable for PostgreSQL/MySQL
-- **Authentication**: JWT-based with bcrypt password hashing
-- **API Structure**: RESTful API with `/api` prefix
-
-### Frontend (React)
-
-- **Framework**: React 19 with TypeScript
-- **Build Tool**: Vite
-- **Routing**: Client-side routing
-- **API Integration**: TypeScript API clients
-
-### Key Components
-
-```
-backend/
-├── main.py              # FastAPI app entry point
-├── models.py            # SQLModel data models
-├── db.py                # Database initialization
-├── auth.py              # Authentication & JWT
-├── packages.py          # Package management
-├── processes.py         # Process definitions
-├── jobs.py              # Job execution
-├── robots.py            # Robot management
-├── machines.py          # Machine management
-├── queues.py            # Queue management
-├── queue_items.py       # Queue item processing
-├── triggers.py          # Trigger definitions
-├── trigger_scheduler.py # Background scheduler
-├── assets.py            # Asset management
-├── access.py            # RBAC system
-├── audit.py             # Audit logging
-├── settings.py          # Settings management
-├── runner.py            # Robot-facing API
-├── sdk_auth.py          # SDK authentication
-└── dashboard.py         # Dashboard metrics
-
-frontend/
-├── src/
-│   ├── pages/           # React page components
-│   ├── components/      # Reusable components
-│   ├── api/             # API client functions
-│   └── types/           # TypeScript type definitions
-```
-
-## Installation
-
-### Prerequisites
-
-- Python 3.9+
-- Node.js 18+
-- npm or yarn
-
-### Backend Setup
-
-1. Navigate to the backend directory:
-```bash
-cd backend
-```
-
-2. Create a virtual environment (recommended):
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-4. Initialize the database:
-```bash
-# The database is automatically created on first run
-python -m uvicorn main:app --reload
-```
-
-The backend will:
-- Create `app.db` SQLite database
-- Initialize all tables
-- Create default admin user (username: `admin`, password: `admin123`)
-- Create default roles (Administrator, Read Only)
-
-### Frontend Setup
-
-1. Navigate to the frontend directory:
-```bash
-cd frontend
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Start the development server:
-```bash
-npm run dev
-```
-
-The frontend will run on `http://localhost:5173` (Vite default port).
-
-## Quick Start
-
-1. **Start Backend**:
-```bash
-cd backend
-python -m uvicorn main:app --reload
-```
-Backend runs on `http://127.0.0.1:8000`
-
-2. **Start Frontend**:
-```bash
-cd frontend
-npm run dev
-```
-Frontend runs on `http://localhost:5173`
-
-3. **Login**:
-   - Open `http://localhost:5173`
-   - Username: `admin`
-   - Password: `admin123`
-
-4. **Upload a Package**:
-   - Navigate to Packages page
-   - Click "Upload Package"
-   - Select a `.bvpackage` file
-   - Package is validated and stored
-
-5. **Create a Process**:
-   - Navigate to Processes page
-   - Click "Create Process"
-   - Select a package and entrypoint
-   - Save the process
-
-6. **Create a Job**:
-   - Navigate to Jobs page
-   - Click "Create Job"
-   - Select a process
-   - Provide parameters (JSON)
-   - Job is created in `pending` status
-
-7. **Register a Robot**:
-   - Create a Machine in Machines page
-   - Copy the `machine_key` (shown only once)
-   - Use the runner API to register a robot
-   - Robot will appear in Robots page
-
-## Core Concepts
-
+## 2. Core Concepts
 ### Packages
-
-A **package** is a `.bvpackage` file containing automation code. Packages must include:
-- `bvproject.yaml`: Package metadata (name, version)
-- `entry-points.json`: Entrypoint definitions
-- `main.py` or other Python files with automation functions
-
-**Package Structure**:
-```
-my_package_1.0.0.bvpackage
-├── bvproject.yaml
-├── entry-points.json
-├── main.py
-├── requirements.lock
-└── manifest.json
-```
+Versioned automation bundles (`.bvpackage`). Include entrypoints, signatures, optional assets. Stored and validated by the orchestrator; executed by runners.
 
 ### Processes
-
-A **process** defines how to execute a package entrypoint. It links:
-- A package (by ID)
-- An entrypoint name (for BV packages)
-- Optional description and metadata
-
-Processes can be active or inactive. Only active processes can be used to create jobs.
+Definitions that bind a package entrypoint (or legacy script path) plus metadata. A process is the runnable unit for creating jobs. Tracks type (RPA/Agent) and active version.
 
 ### Jobs
+Requested executions of a process. Carry parameters, optional robot/machine targeting, queue item linkage, status, result/error payloads, retries, and audit trail.
 
-A **job** is a single execution instance of a process. Jobs have:
-- **Status**: `pending` → `running` → `completed`/`failed`/`canceled`
-- **Parameters**: JSON data passed to the automation script
-- **Result**: JSON data returned from execution
-- **Error Message**: Error details if execution fails
-- **Execution ID**: Unique UUID for tracking
+### Executions
+Concrete runs of a job on a runner/agent. Capture start/end timestamps, heartbeats, and final status. Jobs may have multiple executions in failure/retry scenarios.
 
 ### Robots
-
-A **robot** is an execution agent that:
-- Registers with a machine key
-- Polls for pending jobs
-- Executes jobs and reports results
-- Sends heartbeats to maintain online status
-
-Robots can be:
-- **Online**: Actively processing jobs
-- **Offline**: Not responding to heartbeats
+Logical executors representing automation workers. Associated with machines; authenticated via tokens/keys. Can be online/offline; receive jobs through pull-based dispatch.
 
 ### Machines
+Physical/virtual hosts that run robots or agents. Store host identity, capabilities, and regenerated keys. Used for trust and scoping runner access.
 
-A **machine** represents a physical or virtual machine where robots run. Machines have:
-- **Mode**: `runner` (executes jobs) or `agent` (monitoring)
-- **Status**: `connected` or `disconnected`
-- **Machine Key**: One-time authentication key (hashed in DB)
-- **Signature Hash**: Machine fingerprint for security
+### Queues & Queue Items
+Work queues for decoupled job intake. Queue items have lifecycle (NEW → IN_PROGRESS → DONE/FAILED/ABANDONED/DELETED) and optional retry semantics. Triggers and jobs can consume items.
 
-### Queues
-
-A **queue** is a container for work items. Queues support:
-- **Max Retries**: Maximum retry attempts for failed items
-- **Unique References**: Prevent duplicate items by reference
-- **Active Status**: Enable/disable queue processing
-
-### Queue Items
-
-A **queue item** represents a unit of work. Items have:
-- **Status**: `NEW` → `IN_PROGRESS` → `DONE`/`FAILED`
-- **Reference**: Optional unique identifier
-- **Payload**: JSON data for processing
-- **Priority**: Integer for ordering (higher = first)
-- **Retries**: Current retry count
-
-### Triggers
-
-A **trigger** automatically creates jobs based on:
-- **Time Triggers**: Cron expressions (e.g., `0 9 * * *` for daily at 9 AM)
-- **Queue Triggers**: Polls a queue and creates jobs for new items
-
-Triggers can be enabled/disabled without deletion.
+### Triggers (time & queue)
+Schedulers that create jobs automatically. Time triggers are cron-like with timezone support. Queue triggers fire when items are available, optionally batching.
 
 ### Assets
+Key-value configuration and secrets (text, int, bool, secret, credential). Used by jobs/runners at execution time. Secrets are masked in API responses; credentials stored securely.
 
-**Assets** store configuration values:
-- **Text**: Plain text values
-- **Int**: Integer values
-- **Bool**: Boolean values
-- **Secret**: Hashed secrets (never exposed)
-- **Credential**: Username/password pairs (hashed)
+### Credentials
+Structured secrets for robots/processes (username/password pairs). Delivered to runners as needed; never logged in plaintext.
 
-### Roles & Permissions
+### Users, Roles, Permissions
+RBAC model. Users belong to roles. Roles define per-artifact permissions (view/create/edit/delete). Permissions gate API access and UI affordances. Audit trail records who did what.
 
-**Roles** define permission sets:
-- **Artifacts**: Resources (packages, processes, jobs, robots, etc.)
-- **Permissions**: view, create, edit, delete
+## 3. System Architecture
+- **Backend components:** FastAPI app (`backend/`) with routers per artifact (packages, processes, jobs, queues, triggers, assets, access, audit, settings). Uses SQLModel/SQLAlchemy for persistence. Background schedulers (trigger scheduler) run inside the app.
+- **Background schedulers:** `trigger_scheduler.py` evaluates time and queue triggers, creates jobs, and handles retry semantics. Long-running daemon within the backend process.
+- **API layers:**
+  - UI: React frontend calling REST endpoints under `/api`.
+  - SDK: Uses the same REST endpoints with SDK-scoped auth.
+  - Runner: Robot/agent endpoints (under runner/agent routes) for registration, job fetch, heartbeats, and result callbacks.
+- **Persistence model:** Relational DB via SQLModel. Artifacts store both internal numeric IDs and public `external_id` GUIDs. Business logic uses internal IDs; public interfaces must use external GUIDs.
+- **ID strategy:** Internal numeric IDs are private and only used for joins/storage. Public/API/UI/SDK/runner interactions must use `external_id` (GUID). Validation rejects numeric IDs on public surfaces.
 
-**Users** are assigned roles, inheriting all permissions from their roles.
+## 4. Job Orchestration Flow
+- **Manual jobs:** Created from UI/SDK against a process. Transition: PENDING → RUNNING → COMPLETED/FAILED/CANCELED. May target a robot/machine explicitly or be free for any eligible runner.
+- **Triggered jobs:** Created by time or queue triggers. Triggers resolve process, parameters, and optional queue items, then enqueue jobs.
+- **Queue-driven jobs:** Queue triggers or manual actions claim queue items, create jobs referencing those items, and pass payloads to runners. Queue items are updated based on job outcomes and retry policies.
+- **State transitions:** Jobs emit status changes and audit events. Executions track start/end, heartbeats, and errors. Failed jobs may be retried per trigger/queue policy; terminal states are COMPLETED, FAILED, CANCELED, or STOPPED/KILLED (if supported).
 
-## API Documentation
+## 5. Runner Interaction Model
+- **Registration:** Machines generate keys; robots/agents register using machine keys and receive tokens. Host identity may be bound for trust.
+- **Authentication:** Runner calls use bearer tokens or machine keys depending on route. Tokens are short-lived and scoped.
+- **Job dispatch:** Pull model—runners call the orchestrator to fetch next job. Orchestrator selects eligible jobs based on status, targeting, and queue availability.
+- **Heartbeats:** Runners send periodic heartbeats during execution; missing heartbeats can mark jobs stale and trigger retries or failures.
+- **Failure handling:** Runner reports status and error payloads. Orchestrator updates job and linked queue items, applies retry/backoff policies, and emits notifications/audit entries.
 
-### Authentication
+## 6. Logs vs Traces
+- **Logs:** Operational records emitted by backend, runners, and jobs. Include status changes, errors, and infrastructure events. Stored for troubleshooting and audit.
+- **Execution traces:** Fine-grained step/telemetry data from automations (when provided). UI should distinguish traces (execution detail) from logs (system events). For RPA vs Agent, traces may differ in verbosity and structure; UI should label origin and type.
 
-Most endpoints require JWT authentication:
+## 7. Multi-Tenancy & Scaling Considerations
+- **Current state:** Single-tenant control plane with shared DB. No hard tenancy isolation layers yet.
+- **Known limitations:** No per-tenant resource quotas, network isolation, or data-partition enforcement. Horizontal scaling requires externalizing DB/redis and running multiple backend instances behind a load balancer.
+- **Design decisions:** GUID external IDs support sharding/federation later. Pull-based runners allow horizontal executor scaling. Background scheduler is single-process; for HA it must be singleton (e.g., via leader election) or moved to a dedicated worker.
 
-```bash
-# Login
-curl -X POST http://127.0.0.1:8000/api/auth/login \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=admin&password=admin123"
+## 8. API Design Philosophy
+- **Why REST:** Simplicity for UI/SDK/runners; easy to proxy/cache; predictable semantics.
+- **Why polling:** Runners and UI poll for jobs/status to avoid server push complexity and to work behind firewalls. WebSockets may be used for UI live updates where available, but polling is the contract.
+- **Versioning strategy:** Stable base paths; backward-compatible changes preferred. New fields are additive. Breaking changes require coordinated version bumps across UI/SDK/runner.
+- **Backward compatibility:** Public surfaces use external GUIDs; internal IDs are never exposed. Legacy numeric acceptance is being removed; validation rejects numeric identifiers at boundaries.
 
-# Response: {"access_token": "...", "token_type": "bearer"}
+## 9. Security Model
+- **Auth flows:**
+  - UI: JWT-based session for users with roles/permissions.
+  - SDK: Short-lived scoped tokens for development/testing; limited permissions.
+  - Runner: Machine/robot tokens for job fetch, heartbeats, and result callbacks.
+- **Token scopes:** Minimal necessary rights per actor (user role, SDK scope, runner job scope). Tokens are bearer and must be protected in transit.
+- **Machine trust model:** Machine keys tie robots to known hosts. Regeneration invalidates old keys. Host identity may be checked to prevent key reuse.
+- **Secret handling:** Assets/credentials are stored securely; secrets are masked in responses and never logged. Runners receive secrets only when executing authorized jobs.
 
-# Use token in requests
-curl -X GET http://127.0.0.1:8000/api/packages \
-  -H "Authorization: Bearer <token>"
-```
+## 10. Development & Extension Guide
+- **Adding new artifacts:** Define SQLModel, migration, router, service, and UI/API client/types. Expose external_id GUIDs; keep internal IDs private.
+- **Adding agent support:** Reuse runner interaction model; add agent capability flags and process types. Ensure heartbeats and job payloads capture agent-specific metadata.
+- **Extending job types:** Add status enums, payload schemas, and runner-side handling. Update trigger and queue logic to understand new job intents.
+- **Future roadmap hooks:**
+  - Multi-tenant isolation (schema or row-level).
+  - HA scheduler (leader election / distributed locks).
+  - Push-based job delivery (WebSockets/long-poll) if required.
+  - Structured execution traces and span correlation.
 
-### Packages API
-
-#### List Packages
-```http
-GET /api/packages?search=&active_only=&name=
-Authorization: Bearer <token>
-```
-
-#### Get Package
-```http
-GET /api/packages/{package_id}
-Authorization: Bearer <token>
-```
+## System Architecture Summary (at a glance)
+- Backend: FastAPI + SQLModel, routers per artifact, background trigger scheduler.
+- Frontend: React + TypeScript + Vite consuming REST APIs.
+- Runners/Agents: Pull jobs, execute packages, send heartbeats/results.
+- Persistence: Relational DB with internal numeric IDs and public external GUIDs.
+- Observability: Logs + audit trail; optional traces from runners.
+- Security: JWT for UI, scoped tokens for SDK, machine/robot tokens for runners, RBAC enforced at routers.
 
 #### Upload Package
 ```http
