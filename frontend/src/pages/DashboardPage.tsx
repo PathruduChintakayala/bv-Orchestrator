@@ -42,13 +42,7 @@ export default function DashboardPage() {
   );
 }
 
-function Header() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>Dashboard</h1>
-    </div>
-  );
-}
+
 
 function JobHistoryPanel({ history = { total: 0, success: 0, failed: 0, stopped: 0 } }: { history?: DashboardOverview['jobHistory24h'] }) {
   const safe = history || { total: 0, success: 0, failed: 0, stopped: 0 };

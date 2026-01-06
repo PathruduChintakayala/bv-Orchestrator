@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import type { ChangeEvent } from "react";
 import { createPortal } from "react-dom";
 import type { Package } from "../types/package";
-import { fetchPackages, uploadPackage, deletePackage } from "../api/packages";
+import { fetchPackages, uploadPackage, deletePackage, downloadPackageVersion } from "../api/packages";
 import { formatDisplayTime } from "../utils/datetime";
 
 export default function PackagesPage() {

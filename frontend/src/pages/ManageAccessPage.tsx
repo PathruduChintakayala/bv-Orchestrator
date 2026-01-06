@@ -4,7 +4,7 @@ import type { ArtifactKey, Role, RolePermission, UserInvite, UserSummary } from 
 import { fetchRoles, createRole, updateRole, deleteRole, fetchUsers, assignUserRoles, fetchUserRoles, fetchInvites, sendInvite, resendInvite, revokeInvite, disableUser, enableUser, adminPasswordReset } from '../api/access'
 import { formatDisplayTime } from '../utils/datetime'
 
-const ARTIFACTS: ArtifactKey[] = ['dashboard','processes','packages','assets','jobs','robots','queues','queue_items','users','roles']
+const ARTIFACTS: ArtifactKey[] = ['dashboard', 'processes', 'packages', 'assets', 'jobs', 'robots', 'queues', 'queue_items', 'users', 'roles']
 
 type AccessTab = 'roles' | 'users'
 
@@ -39,8 +39,8 @@ export default function ManageAccessPage() {
             <h1 className="page-title" style={{ margin: 0 }}>Manage Access</h1>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={()=>goTab('roles')} style={activeTab==='roles'?primaryBtn:secondaryBtn}>Roles</button>
-            <button onClick={()=>goTab('users')} style={activeTab==='users'?primaryBtn:secondaryBtn}>Users</button>
+            <button onClick={() => goTab('roles')} style={activeTab === 'roles' ? primaryBtn : secondaryBtn}>Roles</button>
+            <button onClick={() => goTab('users')} style={activeTab === 'users' ? primaryBtn : secondaryBtn}>Users</button>
           </div>
         </div>
         {activeTab === 'roles' ? <RolesTab /> : (
@@ -95,7 +95,7 @@ function RolesTab() {
         <button onClick={openNew} style={primaryBtn}>New Role</button>
       </div>
       <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
-        {loading ? <p>Loading...</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
+        {loading ? <p>Loading...</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
@@ -110,8 +110,8 @@ function RolesTab() {
                   <td style={{ padding: '6px 0' }}>{r.name}</td>
                   <td style={{ padding: '6px 0' }}>{r.description ?? '-'}</td>
                   <td style={{ padding: '6px 0' }}>
-                    <button style={secondaryBtn} onClick={()=>openEdit(r)}>Edit</button>{' '}
-                    <button style={dangerBtn} onClick={()=>handleDelete(r.id)}>Delete</button>
+                    <button style={secondaryBtn} onClick={() => openEdit(r)}>Edit</button>{' '}
+                    <button style={dangerBtn} onClick={() => handleDelete(r.id)}>Delete</button>
                   </td>
                 </tr>
               ))}
@@ -129,7 +129,7 @@ function RolesTab() {
   )
 }
 
-function RoleModal({ initial, onCancel, onSave }: { initial: Role | null; onCancel: ()=>void; onSave:(v:RoleFormValues)=>void }) {
+function RoleModal({ initial, onCancel, onSave }: { initial: Role | null; onCancel: () => void; onSave: (v: RoleFormValues) => void }) {
   const initPerms: RolePermission[] = useMemo(() => {
     const map: Record<ArtifactKey, RolePermission> = {} as any
     ARTIFACTS.forEach(a => {
@@ -168,11 +168,11 @@ function RoleModal({ initial, onCancel, onSave }: { initial: Role | null; onCanc
         <div style={{ display: 'grid', gap: 10 }}>
           <label>
             <div style={label}>Role Name</div>
-            <input name='name' value={form.name} onChange={e=>setForm(f=>({ ...f, name: (e.target as any).value }))} style={input} />
+            <input name='name' value={form.name} onChange={e => setForm(f => ({ ...f, name: (e.target as any).value }))} style={input} />
           </label>
           <label>
             <div style={label}>Description</div>
-            <input name='description' value={form.description || ''} onChange={e=>setForm(f=>({ ...f, description: (e.target as any).value }))} style={input} />
+            <input name='description' value={form.description || ''} onChange={e => setForm(f => ({ ...f, description: (e.target as any).value }))} style={input} />
           </label>
           <div>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>Permissions</div>
@@ -195,10 +195,10 @@ function RoleModal({ initial, onCancel, onSave }: { initial: Role | null; onCanc
                   return (
                     <tr key={a} style={{ fontSize: 14 }}>
                       <td style={{ padding: '6px 0' }}>{a}</td>
-                      <td style={{ padding: '6px 0' }}><input type='checkbox' checked={!!p?.canView} onChange={()=>toggle(a, 'canView')} /></td>
-                      <td style={{ padding: '6px 0' }}><input type='checkbox' disabled={disableCreate} checked={!!p?.canCreate} onChange={()=>toggle(a, 'canCreate')} /></td>
-                      <td style={{ padding: '6px 0' }}><input type='checkbox' disabled={disableEdit} checked={!!p?.canEdit} onChange={()=>toggle(a, 'canEdit')} /></td>
-                      <td style={{ padding: '6px 0' }}><input type='checkbox' disabled={disableDelete} checked={!!p?.canDelete} onChange={()=>toggle(a, 'canDelete')} /></td>
+                      <td style={{ padding: '6px 0' }}><input type='checkbox' checked={!!p?.canView} onChange={() => toggle(a, 'canView')} /></td>
+                      <td style={{ padding: '6px 0' }}><input type='checkbox' disabled={disableCreate} checked={!!p?.canCreate} onChange={() => toggle(a, 'canCreate')} /></td>
+                      <td style={{ padding: '6px 0' }}><input type='checkbox' disabled={disableEdit} checked={!!p?.canEdit} onChange={() => toggle(a, 'canEdit')} /></td>
+                      <td style={{ padding: '6px 0' }}><input type='checkbox' disabled={disableDelete} checked={!!p?.canDelete} onChange={() => toggle(a, 'canDelete')} /></td>
                     </tr>
                   )
                 })}
@@ -275,7 +275,7 @@ function UsersTab({ canInvite, canManageUsers }: { canInvite: boolean; canManage
 
   async function save() {
     if (!selected) return
-    try { await assignUserRoles(selected.id, assigned) ; alert('Roles saved') }
+    try { await assignUserRoles(selected.id, assigned); alert('Roles saved') }
     catch (e: any) { alert(e.message || 'Save failed') }
   }
 
@@ -323,9 +323,9 @@ function UsersTab({ canInvite, canManageUsers }: { canInvite: boolean; canManage
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button onClick={() => goSubTab('users')} style={subTab==='users'?primaryBtn:secondaryBtn}>Users</button>
-        {canInvite && <button onClick={() => goSubTab('invites')} style={subTab==='invites'?primaryBtn:secondaryBtn}>Invites</button>}
-        {canInvite && subTab==='users' && <button onClick={() => setInviteModalOpen(true)} style={{ ...primaryBtn, marginLeft: 'auto' }}>Invite User</button>}
+        <button onClick={() => goSubTab('users')} style={subTab === 'users' ? primaryBtn : secondaryBtn}>Users</button>
+        {canInvite && <button onClick={() => goSubTab('invites')} style={subTab === 'invites' ? primaryBtn : secondaryBtn}>Invites</button>}
+        {canInvite && subTab === 'users' && <button onClick={() => setInviteModalOpen(true)} style={{ ...primaryBtn, marginLeft: 'auto' }}>Invite User</button>}
       </div>
 
       {subTab === 'users' && userActionMessage && (
@@ -336,7 +336,7 @@ function UsersTab({ canInvite, canManageUsers }: { canInvite: boolean; canManage
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
             <h3 style={{ margin: 0, marginBottom: 12 }}>Users</h3>
-            {loading ? <p>Loading...</p> : error ? <p style={{color:'#b91c1c'}}>{error}</p> : (
+            {loading ? <p>Loading...</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
@@ -349,7 +349,7 @@ function UsersTab({ canInvite, canManageUsers }: { canInvite: boolean; canManage
                 </thead>
                 <tbody>
                   {users.map(u => (
-                    <tr key={u.id} style={{ fontSize: 14, color: '#111827', cursor: 'pointer', background: selected?.id === u.id ? '#f3f4f6' : 'transparent' }} onClick={()=>selectUser(u)}>
+                    <tr key={u.id} style={{ fontSize: 14, color: '#111827', cursor: 'pointer', background: selected?.id === u.id ? '#f3f4f6' : 'transparent' }} onClick={() => selectUser(u)}>
                       <td style={{ padding: '6px 0' }}>{u.username}</td>
                       <td style={{ padding: '6px 0' }}>{u.email ?? '-'}</td>
                       <td style={{ padding: '6px 0' }}>{u.roles && u.roles.length ? u.roles.join(', ') : '—'}</td>
@@ -380,7 +380,7 @@ function UsersTab({ canInvite, canManageUsers }: { canInvite: boolean; canManage
                     {roles.map(r => (
                       <tr key={r.id} style={{ fontSize: 14 }}>
                         <td style={{ padding: '6px 0' }}>{r.name}</td>
-                        <td style={{ padding: '6px 0' }}><input type='checkbox' disabled={!canManageUsers} checked={assigned.includes(r.id)} onChange={()=>toggleRole(r.id)} /></td>
+                        <td style={{ padding: '6px 0' }}><input type='checkbox' disabled={!canManageUsers} checked={assigned.includes(r.id)} onChange={() => toggleRole(r.id)} /></td>
                       </tr>
                     ))}
                     {roles.length === 0 && (
@@ -410,8 +410,8 @@ function UsersTab({ canInvite, canManageUsers }: { canInvite: boolean; canManage
           loading={invitesLoading}
           error={inviteError}
           onReload={loadInvites}
-          onResend={async (id) => { setInviteSuccess(null); await resendInvite(id); setInviteSuccess('Invite resent'); await loadInvites(); setTimeout(()=>setInviteSuccess(null), 2000) }}
-          onRevoke={async (id) => { setInviteSuccess(null); await revokeInvite(id); setInviteSuccess('Invite revoked'); await loadInvites(); setTimeout(()=>setInviteSuccess(null), 2000) }}
+          onResend={async (id) => { setInviteSuccess(null); await resendInvite(id); setInviteSuccess('Invite resent'); await loadInvites(); setTimeout(() => setInviteSuccess(null), 2000) }}
+          onRevoke={async (id) => { setInviteSuccess(null); await revokeInvite(id); setInviteSuccess('Invite revoked'); await loadInvites(); setTimeout(() => setInviteSuccess(null), 2000) }}
           success={inviteSuccess}
         />
       )}
@@ -427,118 +427,7 @@ function UsersTab({ canInvite, canManageUsers }: { canInvite: boolean; canManage
   )
 }
 
-function InvitesTab({ isAdmin }: { isAdmin: boolean }) {
-  const [invites, setInvites] = useState<UserInvite[]>([])
-  const [roles, setRoles] = useState<Role[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [email, setEmail] = useState('')
-  const [roleIds, setRoleIds] = useState<number[]>([])
-  const [sending, setSending] = useState(false)
-  const [success, setSuccess] = useState<string | null>(null)
 
-  useEffect(() => { load() }, [])
-
-  async function load() {
-    try {
-      setLoading(true); setError(null)
-      const [inv, r] = await Promise.all([fetchInvites(), fetchRoles()])
-      setInvites(inv)
-      setRoles(r)
-    } catch (e: any) {
-      setError(e.message || 'Failed to load invites')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  function toggleRole(id: number) {
-    setRoleIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-  }
-
-  async function submit() {
-    if (!email.trim()) { setError('Email is required'); return }
-    try {
-      setSending(true); setError(null); setSuccess(null)
-      await sendInvite({ email: email.trim(), roleIds })
-      setEmail(''); setRoleIds([]); setSuccess('Invite sent')
-      await load()
-      setTimeout(() => setSuccess(null), 2000)
-    } catch (e: any) {
-      setError(e.message || 'Failed to send invite')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  return (
-    <div style={{ display: 'grid', gap: 12 }}>
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div>
-            <h3 style={{ margin: 0, marginBottom: 4 }}>Invite User</h3>
-            <p style={{ margin: 0, color: '#6b7280', fontSize: 14 }}>Send an invite email with optional role assignments.</p>
-          </div>
-        </div>
-        {!isAdmin && <p style={{ color: '#b91c1c', marginTop: 8 }}>Only administrators can send invites.</p>}
-        <div style={{ display: 'grid', gap: 10, marginTop: 8, maxWidth: 520, opacity: isAdmin ? 1 : 0.6 }}>
-          <label>
-            <div style={label}>Email</div>
-            <input value={email} onChange={e => setEmail(e.target.value)} style={input} placeholder="user@example.com" disabled={!isAdmin} />
-          </label>
-          <div>
-            <div style={{ ...label, marginBottom: 4 }}>Roles (optional)</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
-              {roles.map(r => (
-                <label key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
-                  <input type='checkbox' checked={roleIds.includes(r.id)} onChange={() => toggleRole(r.id)} disabled={!isAdmin} />
-                  <span>{r.name}</span>
-                </label>
-              ))}
-              {roles.length === 0 && <span style={{ color: '#6b7280' }}>No roles available</span>}
-            </div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button onClick={submit} disabled={!isAdmin || sending} style={primaryBtn}>{sending ? 'Sending…' : 'Send Invite'}</button>
-          </div>
-          {error && <p style={{ color: '#b91c1c', margin: 0 }}>{error}</p>}
-          {success && <p style={{ color: '#065f46', margin: 0 }}>{success}</p>}
-        </div>
-      </div>
-
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, boxShadow: '0 10px 24px rgba(15,23,42,0.08)', padding: 16 }}>
-        <h3 style={{ margin: 0, marginBottom: 12 }}>Pending & Recent Invites</h3>
-        {loading ? <p>Loading…</p> : error ? <p style={{ color: '#b91c1c' }}>{error}</p> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', fontSize: 12, color: '#6b7280' }}>
-                <th style={{ paddingBottom: 8 }}>Email</th>
-                <th style={{ paddingBottom: 8 }}>Status</th>
-                <th style={{ paddingBottom: 8 }}>Invited By</th>
-                <th style={{ paddingBottom: 8 }}>Expires</th>
-                <th style={{ paddingBottom: 8 }}>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invites.map(i => (
-                <tr key={i.id} style={{ fontSize: 14, color: '#111827' }}>
-                  <td style={{ padding: '6px 0' }}>{i.email}</td>
-                  <td style={{ padding: '6px 0' }}><StatusBadge status={i.status} /></td>
-                  <td style={{ padding: '6px 0' }}>{i.invitedBy || '—'}</td>
-                  <td style={{ padding: '6px 0' }}>{i.expiresAt ? formatDisplayTime(i.expiresAt) : '—'}</td>
-                  <td style={{ padding: '6px 0' }}>{formatDisplayTime(i.createdAt)}</td>
-                </tr>
-              ))}
-              {invites.length === 0 && (
-                <tr><td colSpan={5} style={{ paddingTop: 12, color: '#6b7280' }}>No invites yet</td></tr>
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  )
-}
 
 function StatusBadge({ status }: { status: UserInvite['status'] }) {
   const colors: Record<UserInvite['status'], string> = {

@@ -21,9 +21,9 @@ def upgrade():
         'credential_store',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('name', sa.String(length=255), nullable=False, unique=True),
-        sa.Column('type', sa.String(length=64), nullable=False, index=True),
-        sa.Column('is_default', sa.Boolean(), nullable=False, server_default=sa.text('0')),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('type', sa.String(length=64), nullable=False),
+        sa.Column('is_default', sa.Boolean(), nullable=False, server_default=sa.text('false')),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('config', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
@@ -37,7 +37,7 @@ def upgrade():
     conn.execute(
         sa.text(
             "INSERT INTO credential_store (name, type, is_default, is_active, description, config, created_at, updated_at) "
-            "VALUES (:name, :type, 1, 1, :description, NULL, :created_at, :updated_at)"
+            "VALUES (:name, :type, true, true, :description, NULL, :created_at, :updated_at)"
         ),
         {
             "name": "Orchestrator Store",
@@ -47,7 +47,7 @@ def upgrade():
             "updated_at": now,
         },
     )
-    default_id = conn.execute(sa.text("SELECT id FROM credential_store WHERE is_default = 1 LIMIT 1")).scalar()
+    default_id = conn.execute(sa.text("SELECT id FROM credential_store WHERE is_default = true LIMIT 1")).scalar()
 
     op.add_column('asset', sa.Column('credential_store_id', sa.Integer(), nullable=True))
     op.create_index('ix_asset_credential_store_id', 'asset', ['credential_store_id'], unique=False)

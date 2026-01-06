@@ -12,8 +12,7 @@ import { createJob } from "../api/jobs"
 import TriggerModal from "../components/TriggerModal"
 import { formatDisplayTime } from '../utils/datetime'
 
-const primaryBtn: CSSProperties = { padding: "10px 14px", borderRadius: 8, backgroundColor: "#2563eb", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }
-const secondaryBtn: CSSProperties = { padding: "10px 14px", borderRadius: 8, backgroundColor: "#e5e7eb", color: "#111827", border: "none", fontWeight: 600, cursor: "pointer" }
+
 const dangerBtn: CSSProperties = { padding: "10px 14px", borderRadius: 8, backgroundColor: "#dc2626", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }
 
 export default function TriggersPage() {

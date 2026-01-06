@@ -16,7 +16,7 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('user', sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1')))
+    op.add_column('user', sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')))
     op.add_column('user', sa.Column('disabled_at', sa.DateTime(), nullable=True))
     op.add_column('user', sa.Column('disabled_by_user_id', sa.Integer(), nullable=True))
     op.add_column('user', sa.Column('failed_login_attempts', sa.Integer(), nullable=False, server_default='0'))

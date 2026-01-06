@@ -72,15 +72,15 @@ export async function fetchEmailSettings(): Promise<EmailSettings> {
 export async function updateEmailSettings(payload: Partial<EmailSettings>): Promise<EmailSettings> {
   const body: Record<string, any> = {
     enabled: payload.enabled ?? defaultEmailSettings.enabled,
-    smtpHost: payload.smtpHost ?? defaultEmailSettings.smtpHost,
-    smtpPort: payload.smtpPort ?? null,
-    smtpUsername: payload.smtpUsername ?? defaultEmailSettings.smtpUsername,
-    smtpUseTls: payload.smtpUseTls ?? defaultEmailSettings.smtpUseTls,
-    smtpUseSsl: payload.smtpUseSsl ?? defaultEmailSettings.smtpUseSsl,
-    fromAddress: payload.fromAddress ?? defaultEmailSettings.fromAddress,
+    smtp_host: payload.smtpHost ?? defaultEmailSettings.smtpHost,
+    smtp_port: payload.smtpPort ?? null,
+    smtp_username: payload.smtpUsername ?? defaultEmailSettings.smtpUsername,
+    smtp_use_tls: payload.smtpUseTls ?? defaultEmailSettings.smtpUseTls,
+    smtp_use_ssl: payload.smtpUseSsl ?? defaultEmailSettings.smtpUseSsl,
+    from_address: payload.fromAddress ?? defaultEmailSettings.fromAddress,
   }
   if (payload.smtpPassword !== undefined) {
-    body.smtpPassword = payload.smtpPassword
+    body.smtp_password = payload.smtpPassword
   }
   const res = await fetch('/api/settings/email', {
     method: 'PUT',

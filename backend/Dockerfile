@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . ./backend
 
 # Move entrypoint script to root for easier access
-RUN mv ./backend/entrypoint.sh ./entrypoint.sh && chmod +x ./entrypoint.sh
+RUN mv ./backend/entrypoint.sh ./entrypoint.sh && sed -i 's/\r$//' ./entrypoint.sh && chmod +x ./entrypoint.sh
 
 # Set PYTHONPATH to allow importing 'backend'
 ENV PYTHONPATH=/app
