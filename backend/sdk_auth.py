@@ -154,6 +154,7 @@ def poll_status(session_id: str, db: Session = Depends(get_session)):
         {
             "sub": u.username,
             "is_admin": bool(getattr(u, "is_admin", False)),
+            "token_version": getattr(u, "token_version", 1) or 1,
             "auth_type": "sdk",
             "sdk_session_id": sess.session_id,
         },

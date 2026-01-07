@@ -84,13 +84,13 @@ export default function JobsPage() {
     try {
       const hash = window.location.hash || '#/automations/jobs';
       const url = new URL(hash.replace('#', ''), 'http://localhost');
-      const pid = url.searchParams.get('processId');
+      const pidParam = url.searchParams.get('processId');
       const src = url.searchParams.get('source');
       const trig = url.searchParams.get('trigger');
       trigger = Boolean(trig);
       if (src) setSource(src);
-      if (pid) {
-        const num = Number(pid);
+      if (pidParam) {
+        const num = Number(pidParam);
         setProcessId(num);
         return { pid: num, trigger };
       }
@@ -598,7 +598,7 @@ function TriggerModal({ processesState, robotsState, onCancel, onSave, defaultPr
   const canSubmit = ready && !!form.processId;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
+    <div style={{ position: 'fixed', top: 112, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
       <div style={{ width: '100%', maxWidth: 760, background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>Trigger Job</h2>
 
@@ -693,6 +693,7 @@ function SearchableSelect({ options, value, onChange, placeholder, disabled }: {
           textAlign: 'left',
           cursor: disabled ? 'not-allowed' : 'pointer',
           color: selectedLabel ? '#111827' : '#6b7280',
+          opacity: disabled ? 0.6 : 1,
         }}
       >
         {selectedLabel || placeholder || 'Select'}

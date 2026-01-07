@@ -92,15 +92,26 @@ def process_to_out(p: Process, session=None) -> dict:
         "upgrade_available": upgrade_available,
     }
 
+def _load_package(session, package_identifier: Optional[int | str]) -> Optional[Package]:
+    """Resolve a package by internal id or external_id (GUID).
 
-def _load_package(session, package_id: Optional[int]) -> Optional[Package]:
-    if package_id is None:
+    Accepts legacy numeric ids to preserve compatibility while allowing the
+    public-facing external_id sent by newer clients.
+    """
+    if package_identifier is None:
         return None
+
+    pkg = None
     try:
-        pid = int(package_id)
+        pid = int(package_identifier)
     except Exception:
-        raise HTTPException(status_code=400, detail="package_id must be an integer")
-    pkg = session.exec(select(Package).where(Package.id == pid)).first()
+        pid = None
+    if pid is not None:
+        pkg = session.exec(select(Package).where(Package.id == pid)).first()
+
+    if pkg is None:
+        pkg = session.exec(select(Package).where(Package.external_id == str(package_identifier))).first()
+
     if not pkg:
         raise HTTPException(status_code=400, detail="Selected package does not exist")
     return pkg

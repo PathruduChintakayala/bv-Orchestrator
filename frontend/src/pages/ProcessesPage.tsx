@@ -578,7 +578,7 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
+    <div style={{ position: 'fixed', top: 112, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
       <div style={{
         width: '100%',
         maxWidth: 680,
@@ -589,9 +589,11 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
         display: 'flex',
         flexDirection: 'column',
         gap: 16,
+        maxHeight: 'calc(100vh - 112px - 32px)',
       }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>{initial ? 'Edit Process' : 'New Process'}</h2>
-        <div style={{ display: 'grid', gap: 12 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12, flexShrink: 0 }}>{initial ? 'Edit Process' : 'New Process'}</h2>
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label>
             <div style={label}>Name</div>
             <input name="name" value={form.name} onChange={(e) => handleNameChange(e.target.value)} style={input} />
@@ -642,7 +644,8 @@ function ProcessModal({ initial, onCancel, onSave, packages }: { initial: Proces
           )}
 
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, flexShrink: 0 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
           <button onClick={submit} disabled={saving} style={primaryBtn}>{saving ? 'Saving…' : 'Save'}</button>
         </div>

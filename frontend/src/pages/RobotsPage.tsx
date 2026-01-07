@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import type { Robot, RobotStatus } from "../types/robot";
+import type { Robot } from "../types/robot";
 import { fetchRobots, deleteRobot, createRobot, updateRobot } from "../api/robots";
 import { formatDisplayTime } from "../utils/datetime";
 import { fetchMachines } from "../api/machines";
@@ -178,7 +178,6 @@ function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCa
   const dialog = useDialog();
   const [form, setForm] = useState<FormValues>({
     name: initial?.name || "",
-    status: initial?.status || "offline",
     machineInfo: initial?.machineInfo || "",
     machineId: initial?.machineId ?? null,
     credentialUsername: initial?.username || "",
@@ -238,10 +237,10 @@ function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCa
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
-      <div style={{ width: '100%', maxWidth: 600, background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>{initial ? 'Edit Robot' : 'New Robot'}</h2>
-        <div style={{ display: 'grid', gap: 10 }}>
+    <div style={{ position: 'fixed', top: 112, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
+      <div style={{ width: '100%', maxWidth: 600, maxHeight: 'calc(100vh - 112px - 32px)', background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12, flexShrink: 0 }}>{initial ? 'Edit Robot' : 'New Robot'}</h2>
+        <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <label>
             <div style={label}>Name</div>
             <input name="name" value={form.name} onChange={handleChange} style={input} />
@@ -268,12 +267,6 @@ function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCa
             </label>
           )}
           <label>
-            <div style={label}>Status <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 'normal' }}>(read-only)</span></div>
-            <select name="status" value={form.status} onChange={handleChange} style={input} disabled>
-              {(['offline', 'online'] as RobotStatus[]).map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </label>
-          <label>
             <div style={label}>Machine Info <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 'normal' }}>(optional)</span></div>
             <input name="machineInfo" value={form.machineInfo || ''} onChange={handleChange} style={input} />
           </label>
@@ -287,7 +280,7 @@ function RobotModal({ initial, onCancel, onSave }: { initial: Robot | null; onCa
             <input name="credentialPassword" type="password" value={form.credentialPassword || ''} onChange={handleChange} style={input} placeholder={initial ? 'Leave blank to keep current' : ''} />
           </label>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, flexShrink: 0 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
           <button onClick={submit} disabled={saving} style={primaryBtn}>{saving ? 'Saving…' : 'Save'}</button>
         </div>
@@ -426,7 +419,6 @@ function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onTog
 
 type FormValues = {
   name: string;
-  status: RobotStatus;
   machineId?: number | null;
   machineInfo?: string | null;
   credentialUsername?: string;

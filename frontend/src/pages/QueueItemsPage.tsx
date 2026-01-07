@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { QueueItem, QueueItemStatus } from '../types/queueItem'
 import { formatQueueItemPriority, queueItemPriorityLabels } from '../types/queueItem'
 import { fetchQueueItems, createQueueItem, updateQueueItem } from '../api/queueItems'
@@ -6,6 +7,8 @@ import { formatDisplayTime } from '../utils/datetime'
 import { fetchQueues } from '../api/queues'
 import { useDialog } from '../components/DialogProvider'
 import { useToast } from '../components/ToastProvider'
+
+type MenuAction = { label: string; onClick: () => void; tone?: 'danger'; disabled?: boolean }
 
 export default function QueueItemsPage() {
   const dialog = useDialog()
@@ -21,6 +24,7 @@ export default function QueueItemsPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [currentQueue, setCurrentQueue] = useState<import('../types/queue').Queue | null>(null)
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
 
   useEffect(() => {
     const hash = window.location.hash || '#/queue-items'
@@ -121,6 +125,77 @@ export default function QueueItemsPage() {
     await load()
   }
 
+  function statusKey(it: QueueItem) {
+    return (it.status || '').toLowerCase()
+  }
+
+  function queueItemActions(it: QueueItem): MenuAction[] {
+    const s = statusKey(it)
+    return [
+      { label: 'View Details', onClick: () => { setSelectedItem(it); setMenuOpenId(null) } },
+      { label: 'Remove', onClick: () => { void handleRemove(it) }, disabled: s !== 'new' },
+      { label: 'Clone', onClick: () => { void handleClone(it) }, disabled: s !== 'new' },
+      { label: 'Retry', onClick: () => { void handleRetry(it) }, disabled: s !== 'failed' },
+    ]
+  }
+
+  async function handleRemove(it: QueueItem) {
+    if (statusKey(it) !== 'new') { setMenuOpenId(null); return }
+    const prevItems = items
+    setItems(prev => prev.filter(x => x.id !== it.id))
+    try {
+      await updateQueueItem(it.id, { status: 'deleted' })
+      pushToast({ title: 'Queue item removed', tone: 'success' })
+    } catch (e: any) {
+      setItems(prevItems)
+      await dialog.alert({ title: 'Remove failed', message: e?.message || 'Unable to remove item' })
+    } finally {
+      setMenuOpenId(null)
+    }
+  }
+
+  async function handleClone(it: QueueItem) {
+    if (statusKey(it) !== 'new') { setMenuOpenId(null); return }
+    const targetQueueId = it.queueId || queueId
+    if (!targetQueueId) { await dialog.alert({ title: 'Queue missing', message: 'Queue id is required to clone this item.' }); setMenuOpenId(null); return }
+
+    const tempId = `clone-${Date.now()}`
+    const nowIso = new Date().toISOString()
+    const temp: QueueItem = { ...it, id: tempId, status: 'new', retries: 0, lockedAt: null, lockedByRobotId: null, createdAt: nowIso, updatedAt: nowIso }
+    setItems(prev => [temp, ...prev])
+    try {
+      const created = await createQueueItem({ queueId: targetQueueId, reference: it.reference || undefined, priority: it.priority, payload: (it.payload as any) || undefined })
+      setItems(prev => [created, ...prev.filter(p => p.id !== tempId)])
+      pushToast({ title: 'Queue item cloned', tone: 'success' })
+    } catch (e: any) {
+      setItems(prev => prev.filter(p => p.id !== tempId))
+      await dialog.alert({ title: 'Clone failed', message: e?.message || 'Unable to clone item' })
+    } finally {
+      setMenuOpenId(null)
+    }
+  }
+
+  async function handleRetry(it: QueueItem) {
+    if (statusKey(it) !== 'failed') { setMenuOpenId(null); return }
+    const targetQueueId = it.queueId || queueId
+    if (!targetQueueId) { await dialog.alert({ title: 'Queue missing', message: 'Queue id is required to retry this item.' }); setMenuOpenId(null); return }
+
+    const tempId = `retry-${Date.now()}`
+    const nowIso = new Date().toISOString()
+    const temp: QueueItem = { ...it, id: tempId, status: 'new', retries: 0, errorMessage: null, lockedAt: null, lockedByRobotId: null, createdAt: nowIso, updatedAt: nowIso }
+    setItems(prev => [temp, ...prev])
+    try {
+      const created = await createQueueItem({ queueId: targetQueueId, reference: it.reference || undefined, priority: it.priority, payload: (it.payload as any) || undefined })
+      setItems(prev => [created, ...prev.filter(p => p.id !== tempId)])
+      pushToast({ title: 'Retry queued', tone: 'success' })
+    } catch (e: any) {
+      setItems(prev => prev.filter(p => p.id !== tempId))
+      await dialog.alert({ title: 'Retry failed', message: e?.message || 'Unable to retry item' })
+    } finally {
+      setMenuOpenId(null)
+    }
+  }
+
   function togglePrioritySort() {
     setPrioritySort(prev => prev === 'none' ? 'desc' : prev === 'desc' ? 'asc' : 'none')
   }
@@ -212,7 +287,12 @@ export default function QueueItemsPage() {
                     <td data-align="right">{it.retries}</td>
                     <td>{formatDisplayTime(it.createdAt)}</td>
                     <td data-type="actions">
-                      <button style={secondaryBtn} onClick={() => setSelectedItem(it)}>View Details</button>
+                      <ActionMenu
+                        open={menuOpenId === it.id}
+                        onToggle={() => setMenuOpenId(menuOpenId === it.id ? null : it.id)}
+                        onClose={() => setMenuOpenId(null)}
+                        actions={queueItemActions(it)}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -232,6 +312,112 @@ export default function QueueItemsPage() {
 
       {selectedItem && (
         <DetailsModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+      )}
+    </div>
+  )
+}
+
+function ActionMenu({ open, onToggle, onClose, actions }: { open: boolean; onToggle: () => void; onClose: () => void; actions: MenuAction[] }) {
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  useEffect(() => {
+    if (!open) return
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node) && buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        onClose()
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open, onClose])
+
+  const menuStyle = useMemo(() => {
+    if (!open || !buttonRef.current) return {}
+    const rect = buttonRef.current.getBoundingClientRect()
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
+    const menuHeight = actions.length * 40 + 16
+    const menuWidth = 180
+
+    let top = rect.bottom + 8
+    let left = rect.right - menuWidth
+
+    if (top + menuHeight > viewportHeight && rect.top - menuHeight - 8 > 0) {
+      top = rect.top - menuHeight - 8
+    }
+    if (left < 0) left = rect.left
+    if (left + menuWidth > viewportWidth) left = viewportWidth - menuWidth - 8
+
+    return { position: 'fixed' as const, top, left, zIndex: 1000 }
+  }, [open, actions.length])
+
+  return (
+    <div className="action-menu" style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => { e.stopPropagation(); onToggle() }}
+        className="btn btn-ghost icon-button"
+      >
+        ⋮
+      </button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          className="action-menu"
+          role="menu"
+          style={{
+            ...menuStyle,
+            background: '#fff',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.08)',
+            borderRadius: 8,
+            minWidth: 180,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {actions.map((a, index) => (
+            <button
+              key={a.label}
+              role="menuitem"
+              disabled={a.disabled}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                padding: '10px 12px',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: index < actions.length - 1 ? '1px solid #e5e7eb' : 'none',
+                cursor: a.disabled ? 'not-allowed' : 'pointer',
+                color: a.tone === 'danger' ? '#b91c1c' : a.disabled ? '#9ca3af' : '#111827',
+                display: 'block',
+              }}
+              onMouseEnter={(e) => { if (!a.disabled) { e.currentTarget.style.backgroundColor = '#f9fafb' } }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (!a.disabled) { a.onClick(); onClose() }
+              }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -286,7 +472,7 @@ function NewItemModal({ onCancel, onSave }: { onCancel: () => void; onSave: (v: 
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
+    <div style={{ position: 'fixed', top: 112, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
       <div style={{ width: '100%', maxWidth: 640, background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>New Item</h2>
         <div style={{ display: 'grid', gap: 10 }}>
@@ -336,7 +522,7 @@ function DetailsModal({ item, onClose }: { item: QueueItem; onClose: () => void 
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
+    <div style={{ position: 'fixed', top: 112, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
       <div style={{ width: '100%', maxWidth: 800, background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '80vh', overflow: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>

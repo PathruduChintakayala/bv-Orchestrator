@@ -418,7 +418,7 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
+    <div style={{ position: 'fixed', top: 112, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
       <div style={{
         width: '100%',
         maxWidth: 600,
@@ -429,9 +429,11 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
         display: 'flex',
         flexDirection: 'column',
         gap: 16,
+        maxHeight: 'calc(100vh - 112px - 32px)',
       }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>{initial ? 'Edit Asset' : 'New Asset'}</h2>
-        <div style={{ display: 'grid', gap: 10 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12, flexShrink: 0 }}>{initial ? 'Edit Asset' : 'New Asset'}</h2>
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <label>
             <div style={label}>Name</div>
             <input name="name" value={form.name} onChange={handleChange} disabled={!!initial} style={input} />
@@ -489,7 +491,8 @@ function AssetModal({ initial, onCancel, onSave }: { initial: Asset | null; onCa
             <textarea name="description" value={form.description || ''} onChange={handleChange} style={{ ...input, minHeight: 60 }} />
           </label>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, flexShrink: 0 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
           <button onClick={submit} disabled={saving || Boolean(errors.value)} style={primaryBtn}>{saving ? 'Saving…' : 'Save'}</button>
         </div>

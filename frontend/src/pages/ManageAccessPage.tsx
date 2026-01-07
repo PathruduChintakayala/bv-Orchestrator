@@ -168,10 +168,10 @@ function RoleModal({ initial, onCancel, onSave }: { initial: Role | null; onCanc
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
-      <div style={{ width: '100%', maxWidth: 900, background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ position: 'fixed', top: 112, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
+      <div style={{ width: '100%', maxWidth: 900, maxHeight: 'calc(100vh - 112px - 32px)', background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>{initial ? 'Edit Role' : 'New Role'}</h2>
-        <div style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'grid', gap: 10, overflowY: 'auto', flex: 1 }}>
           <label>
             <div style={label}>Role Name</div>
             <input name='name' value={form.name} onChange={e => setForm(f => ({ ...f, name: (e.target as any).value }))} style={input} />
@@ -212,7 +212,7 @@ function RoleModal({ initial, onCancel, onSave }: { initial: Role | null; onCanc
             </table>
           </div>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, flexShrink: 0 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
           <button onClick={submit} disabled={saving} style={primaryBtn}>{saving ? 'Saving...' : 'Save'}</button>
         </div>
@@ -501,30 +501,32 @@ function InviteModal({ roles, onCancel, onSent }: { roles: Role[]; onCancel: () 
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center', zIndex: 30 }}>
-      <div style={{ width: '100%', maxWidth: 540, background: '#fff', borderRadius: 16, boxShadow: '0 10px 24px rgba(15,23,42,0.12)', padding: 20, display: 'grid', gap: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ position: 'fixed', top: 112, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center', zIndex: 30 }}>
+      <div style={{ width: '100%', maxWidth: 540, maxHeight: 'calc(100vh - 112px - 32px)', background: '#fff', borderRadius: 16, boxShadow: '0 10px 24px rgba(15,23,42,0.12)', padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <h3 style={{ margin: 0 }}>Invite User</h3>
           <button onClick={onCancel} style={{ ...secondaryBtn, padding: '6px 10px' }}>×</button>
         </div>
-        <label>
-          <div style={label}>Email</div>
-          <input value={email} onChange={e => setEmail(e.target.value)} style={input} placeholder="user@example.com" />
-        </label>
-        <div>
-          <div style={{ ...label, marginBottom: 6 }}>Roles (optional)</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
-            {roles.map(r => (
-              <label key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
-                <input type='checkbox' checked={roleIds.includes(r.id)} onChange={() => toggleRole(r.id)} />
-                <span>{r.name}</span>
-              </label>
-            ))}
-            {roles.length === 0 && <span style={{ color: '#6b7280' }}>No roles available</span>}
+        <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label>
+            <div style={label}>Email</div>
+            <input value={email} onChange={e => setEmail(e.target.value)} style={input} placeholder="user@example.com" />
+          </label>
+          <div>
+            <div style={{ ...label, marginBottom: 6 }}>Roles (optional)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+              {roles.map(r => (
+                <label key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                  <input type='checkbox' checked={roleIds.includes(r.id)} onChange={() => toggleRole(r.id)} />
+                  <span>{r.name}</span>
+                </label>
+              ))}
+              {roles.length === 0 && <span style={{ color: '#6b7280' }}>No roles available</span>}
+            </div>
           </div>
+          {error && <p style={{ color: '#b91c1c', margin: 0 }}>{error}</p>}
         </div>
-        {error && <p style={{ color: '#b91c1c', margin: 0 }}>{error}</p>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
           <button onClick={submit} disabled={sending} style={primaryBtn}>{sending ? 'Sending…' : 'Send Invite'}</button>
         </div>

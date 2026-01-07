@@ -53,10 +53,13 @@ export default function PackagesPage() {
 
   async function handleUpload(values: UploadValues) {
     try {
-      await uploadPackage(values.file!);
+      for (const file of values.files) {
+        await uploadPackage(file);
+      }
       closeUpload();
       await load(search);
-      pushToast({ title: "Package uploaded", tone: "success" });
+      const uploaded = values.files.length;
+      pushToast({ title: uploaded > 1 ? `${uploaded} packages uploaded` : "Package uploaded", tone: "success" });
     } catch (e: any) {
       await dialog.alert({ title: "Upload failed", message: e.message || "Unable to upload package" });
     }
@@ -314,8 +317,8 @@ function VersionsModal({
     }
   }
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center', zIndex: 20 }}>
-      <div style={{ width: '100%', maxWidth: 900, background: '#fff', borderRadius: 16, boxShadow: '0 12px 30px rgba(0,0,0,0.18)', padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ position: 'fixed', top: 112, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center', zIndex: 20 }}>
+      <div style={{ width: '100%', maxWidth: 900, maxHeight: 'calc(100vh - 112px - 32px)', background: '#fff', borderRadius: 16, boxShadow: '0 12px 30px rgba(0,0,0,0.18)', padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Versions for {packageName}</h2>
@@ -390,17 +393,17 @@ function VersionsModal({
 
 function UploadModal({ onCancel, onSave }: { onCancel: () => void; onSave: (v: UploadValues) => void }) {
   const dialog = useDialog();
-  const [form, setForm] = useState<UploadValues>({ file: null });
+  const [form, setForm] = useState<UploadValues>({ files: [] });
   const [saving, setSaving] = useState(false);
 
   function onFile(e: ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
-    setForm(prev => ({ ...prev, file: f }));
+    const fs = e.target.files ? Array.from(e.target.files) : [];
+    setForm(prev => ({ ...prev, files: fs }));
   }
 
   function validate(): string | null {
-    if (!form.file) return 'Package file is required';
-    if (!form.file.name.toLowerCase().endsWith('.bvpackage')) return 'File must be a .bvpackage';
+    if (!form.files.length) return 'At least one .bvpackage file is required';
+    if (form.files.some(f => !f.name.toLowerCase().endsWith('.bvpackage'))) return 'All files must be .bvpackage';
     return null;
   }
 
@@ -416,14 +419,19 @@ function UploadModal({ onCancel, onSave }: { onCancel: () => void; onSave: (v: U
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
-      <div style={{ width: '100%', maxWidth: 600, background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ position: 'fixed', top: 112, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'grid', placeItems: 'center' }}>
+      <div style={{ width: '100%', maxWidth: 600, maxHeight: 'calc(100vh - 112px - 32px)', background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 12 }}>Upload Package</h2>
         <div style={{ display: 'grid', gap: 10 }}>
           <label>
-            <div style={label}>BV Package File (.bvpackage)</div>
-            <input type="file" accept=".bvpackage" onChange={onFile} style={input} />
+            <div style={label}>BV Package File (.bvpackage, multiple allowed)</div>
+            <input type="file" accept=".bvpackage" multiple onChange={onFile} style={input} />
           </label>
+          {form.files.length > 0 && (
+            <div style={{ fontSize: 13, color: '#4b5563' }}>
+              {form.files.length} file{form.files.length > 1 ? 's' : ''} selected: {form.files.map(f => f.name).join(', ')}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
           <button onClick={onCancel} style={secondaryBtn}>Cancel</button>
@@ -435,7 +443,7 @@ function UploadModal({ onCancel, onSave }: { onCancel: () => void; onSave: (v: U
 }
 
 type UploadValues = {
-  file: File | null;
+  files: File[];
 };
 
 type MenuAction = { label: string; onClick: () => void; tone?: "danger"; disabled?: boolean };

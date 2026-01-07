@@ -178,19 +178,21 @@ export default function TriggerModal({ open, onClose, defaultProcessId, lockProc
   if (!open) return null
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 20 }}>
-      <div style={{ width: '100%', maxWidth: 720, background: '#fff', borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.18)', padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>{trigger ? 'Edit Trigger' : 'New Trigger'}</h2>
-        <TriggerForm
-          form={form}
-          setForm={setForm}
-          processes={processes}
-          queues={queues}
-          robots={robots}
-          lockProcess={lockProcess}
-          validationErrors={validationErrors}
-        />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+    <div style={{ position: 'fixed', top: 112, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 20 }}>
+      <div style={{ width: '100%', maxWidth: 720, maxHeight: 'calc(100vh - 112px - 32px)', background: '#fff', borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.18)', padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4, flexShrink: 0 }}>{trigger ? 'Edit Trigger' : 'New Trigger'}</h2>
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          <TriggerForm
+            form={form}
+            setForm={setForm}
+            processes={processes}
+            queues={queues}
+            robots={robots}
+            lockProcess={lockProcess}
+            validationErrors={validationErrors}
+          />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8, flexShrink: 0 }}>
           <button onClick={onClose} style={secondaryBtn}>Cancel</button>
           <button onClick={() => void handleCreate()} style={{ ...primaryBtn, opacity: Object.keys(validationErrors).length ? 0.6 : 1 }} disabled={saving || Object.keys(validationErrors).length > 0}>
             {saving ? 'Saving…' : (trigger ? 'Save' : 'Create')}
