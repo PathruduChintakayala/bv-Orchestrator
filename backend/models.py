@@ -226,6 +226,7 @@ class QueueItem(SQLModel, table=True):
     job_id: Optional[int] = None
     created_at: str
     updated_at: str
+    completed_at: Optional[str] = Field(default=None, index=True)
     __table_args__ = (
         Index("ix_queue_items_queue_id_status", "queue_id", "status"),
     )

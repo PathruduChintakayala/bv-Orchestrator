@@ -15,9 +15,16 @@ from backend.timezone_utils import get_display_timezone, to_display_iso
 
 router = APIRouter(prefix="/settings", tags=["settings"])  # mounted under /api
 
-ALLOWED_GROUPS = {"general", "security", "jobs", "email", "logging"}
+ALLOWED_GROUPS = {"general", "security", "jobs", "email", "logging", "retention"}
 DEFAULT_TIMEZONE = "UTC"
 SECRET_MASK = "********"
+MAX_RETENTION_DAYS = 365
+RETENTION_DEFAULTS = {
+    "retention_enabled": True,
+    "queue_items_retention_days": 90,
+    "job_logs_retention_days": 30,
+    "audit_logs_retention_days": 180,
+}
 
 
 def utcnow_iso() -> str:
@@ -99,6 +106,18 @@ def _build_group_payload(session: Session, group: str) -> Dict[str, Any]:
         else:
             data["smtp_password"] = ""
         data["smtp_password_set"] = has_pw
+    if group == "retention":
+        data.setdefault("retention_enabled", RETENTION_DEFAULTS["retention_enabled"])
+        data.setdefault("queue_items_retention_days", RETENTION_DEFAULTS["queue_items_retention_days"])
+        data.setdefault("job_logs_retention_days", RETENTION_DEFAULTS["job_logs_retention_days"])
+        data.setdefault("audit_logs_retention_days", RETENTION_DEFAULTS["audit_logs_retention_days"])
+        # Clamp values to safe maximum in case of legacy data
+        for k in ("queue_items_retention_days", "job_logs_retention_days", "audit_logs_retention_days"):
+            try:
+                v = int(data.get(k, 0))
+                data[k] = max(1, min(v, MAX_RETENTION_DAYS))
+            except Exception:
+                data[k] = RETENTION_DEFAULTS[k]
     return data
 
 
@@ -121,6 +140,9 @@ def get_settings_group(group: str, session: Session = Depends(get_session), user
 def update_settings_group(group: str, payload: Dict[str, Any], request: Request, session: Session = Depends(get_session), user: User = Depends(get_current_user), _perm: bool = Depends(require_permission("settings", "edit"))):
     if group not in ALLOWED_GROUPS:
         raise HTTPException(status_code=400, detail="Unknown settings group")
+
+    if group == "retention" and not getattr(user, "is_admin", False):
+        raise HTTPException(status_code=403, detail="Only administrators may edit retention settings")
 
     if group == "email":
         enabled = bool(payload.get("enabled", False))
@@ -146,6 +168,20 @@ def update_settings_group(group: str, payload: Dict[str, Any], request: Request,
     before = _build_group_payload(session, group)
 
     # Basic validation per group (lightweight; can expand):
+    if group == "retention":
+        for key, default_val in RETENTION_DEFAULTS.items():
+            if key not in payload:
+                continue
+            if key.endswith("_retention_days"):
+                try:
+                    days_val = int(payload[key])
+                except Exception:
+                    raise HTTPException(status_code=400, detail=f"{key} must be an integer between 1 and {MAX_RETENTION_DAYS}")
+                if days_val < 1 or days_val > MAX_RETENTION_DAYS:
+                    raise HTTPException(status_code=400, detail=f"{key} must be between 1 and {MAX_RETENTION_DAYS}")
+                payload[key] = days_val
+            if key == "retention_enabled":
+                payload[key] = bool(payload[key])
     if group == "security":
         pass
     # Persist provided keys with inferred types (simple heuristics for now)
@@ -194,6 +230,11 @@ def update_settings_group(group: str, payload: Dict[str, Any], request: Request,
     )
 
     return after
+
+
+def get_retention_settings(session: Session) -> Dict[str, Any]:
+    """Return retention settings with defaults applied and values clamped."""
+    return _build_group_payload(session, "retention")
 
 
 class TestEmailRequest(BaseModel):

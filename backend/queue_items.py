@@ -14,6 +14,8 @@ from backend.notification_service import NotificationService
 from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel, root_validator, validator
 
+TERMINAL_STATUSES = {"DONE", "FAILED", "ABANDONED", "DELETED"}
+
 router = APIRouter(prefix="/queue-items", tags=["queue-items"])
 
 VISIBILITY_TIMEOUT_SECONDS = 300
@@ -214,6 +216,7 @@ def get_next_item(
             locked_by_robot_id=None,
             locked_at=None,
             updated_at=utcnow_iso(),
+            completed_at=utcnow_iso(),
         )
     )
     session.commit()
@@ -308,6 +311,7 @@ def create_item(payload: CreateQueueItemRequest, request: Request, session: Sess
         job_id=None,
         created_at=now,
         updated_at=now,
+        completed_at=None,
     )
     session.add(obj)
     try:
@@ -338,7 +342,13 @@ def update_item(item_id: str, payload: UpdateQueueItemRequest, request: Request,
         obj.error_type = payload.error_type
     if payload.error_reason is not None:
         obj.error_reason = payload.error_reason
-    obj.updated_at = utcnow_iso()
+    now_ts = utcnow_iso()
+    if payload.status is not None:
+        if (obj.status or "").upper() in TERMINAL_STATUSES:
+            obj.completed_at = now_ts
+        else:
+            obj.completed_at = None
+    obj.updated_at = now_ts
     session.add(obj)
     session.commit()
     session.refresh(obj)
@@ -369,7 +379,9 @@ def delete_item(item_id: str, request: Request, session: Session = Depends(get_s
         raise HTTPException(status_code=400, detail="Item is already deleted")
     before_status = obj.status
     obj.status = "DELETED"
-    obj.updated_at = utcnow_iso()
+    now_ts = utcnow_iso()
+    obj.updated_at = now_ts
+    obj.completed_at = now_ts
     session.add(obj)
     session.commit()
     try:
@@ -393,6 +405,7 @@ def requeue_item(item_id: str, request: Request, session: Session = Depends(get_
     obj.locked_by_robot_id = None
     obj.locked_at = None
     obj.updated_at = utcnow_iso()
+    obj.completed_at = None
     session.add(obj)
     session.commit()
     session.refresh(obj)

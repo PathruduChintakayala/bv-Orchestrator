@@ -34,6 +34,7 @@ from backend.runtime_credentials import router as runtime_credentials_router
 from backend.runtime_jobs import router as runtime_jobs_router
 from backend.services.credential_store_service import CredentialStoreService
 from backend.trigger_scheduler import scheduler
+from backend.retention_cleanup import retention_worker
 from backend.models import User
 from backend.auth import SECRET_KEY, ALGORITHM
 
@@ -115,12 +116,14 @@ def on_startup():
         ensure_default_roles(session)
         CredentialStoreService(session).ensure_default_store()
     scheduler.start()
+    retention_worker.start()
     heartbeat_monitor.start()
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
     await scheduler.stop()
+    await retention_worker.stop()
     await heartbeat_monitor.stop()
 
 # Auth routes (under /api for consistency)

@@ -33,10 +33,26 @@ class JobService:
         return self.job_to_out(j)
 
     def create_job(self, payload: Dict[str, Any], user: Any, request: Any) -> Dict[str, Any]:
-        pid = payload.get("process_id")
-        p = self.session.exec(select(Process).where(Process.id == pid)).first()
+        # Accept both snake_case and camelCase keys from the frontend
+        pid_raw = payload.get("process_id") or payload.get("processId")
+        p_ext = payload.get("process_external_id") or payload.get("processExternalId")
+
+        p = None
+        pid_num = None
+        if pid_raw is not None:
+            try:
+                pid_num = int(pid_raw)
+            except Exception:
+                pid_num = None
+            if pid_num is not None:
+                p = self.session.exec(select(Process).where(Process.id == pid_num)).first()
+            # If numeric lookup failed or pid is non-numeric, attempt external_id match with pid_raw
+            if p is None and isinstance(pid_raw, str):
+                p = self.session.exec(select(Process).where(Process.external_id == pid_raw)).first()
+        if p is None and p_ext:
+            p = self.session.exec(select(Process).where(Process.external_id == p_ext)).first()
         if not p:
-            raise ValueError("Process not found")
+            raise ValueError(f"Process not found (provided process_id={pid_raw}, process_external_id={p_ext})")
 
         pkg = None
         if p.package_id is not None:
@@ -92,8 +108,9 @@ class JobService:
             else:
                 raise ValueError("queue_item_ids must be a list")
 
+        process_id_value = getattr(p, "id", pid_num)
         j = Job(
-            process_id=pid,
+            process_id=process_id_value,
             package_id=p.package_id,
             package_name=(pkg.name if pkg else None),
             package_version=(pkg.version if pkg else None),
@@ -112,7 +129,18 @@ class JobService:
         self.repo.create(j)
         out = self.job_to_out(j)
         try:
-            log_event(self.session, action="job.create", entity_type="job", entity_id=j.id, entity_name=str(j.id), before=None, after=out, metadata={"process_id": pid, "robot_id": rid}, request=request, user=user)
+            log_event(
+                self.session,
+                action="job.create",
+                entity_type="job",
+                entity_id=j.id,
+                entity_name=str(j.id),
+                before=None,
+                after=out,
+                metadata={"process_id": process_id_value, "robot_id": rid},
+                request=request,
+                user=user,
+            )
         except Exception:
             pass
         return out
